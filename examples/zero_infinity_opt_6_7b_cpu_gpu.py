@@ -1,5 +1,4 @@
 
-
 import argparse
 
 import deepspeed
@@ -21,7 +20,7 @@ import csv
 import pandas as pd
 
 raw_datasets = load_dataset("glue", "mrpc")
-checkpoint = "facebook/opt-13b"
+checkpoint = "facebook/opt-6.7b"
 
 tokenizer = AutoTokenizer.from_pretrained(checkpoint)
 def tokenize_function(example):
@@ -43,7 +42,7 @@ def add_argument():
     parser.add_argument(
         "-e",
         "--epochs",
-        default=1,
+        default=3,
         type=int,
         help="number of total epochs (default: 30)",
     )
@@ -92,6 +91,7 @@ def add_argument():
         action="store_true",
         help="use deepspeed mixture of experts (moe)",
     )
+    
     parser.add_argument(
         "--moe-param-group",
         default=False,
@@ -155,20 +155,18 @@ def get_ds_config(args):
             "overlap_comm": True,
             "contiguous_gradients": True,
             "offload_optimizer": {
-                "device": "nvme",
-                "nvme_path": "/mnt/nvme/",
+                "device": "cpu",
                 "pin_memory": True,
                 "ratio": 1.0,
                 "buffer_count": 4,
                 "fast_init": False
             },
             "offload_param": {
-                "device": "nvme",
-                "nvme_path": "/mnt/nvme/",
+                "device": "cpu",
                 "pin_memory": True,
-                "buffer_count": 30,
+                "buffer_count": 5,
                 "buffer_size": 3e8,
-                "max_in_cpu": 1e9
+                "max_in_cpu": 10000
             }
         },
         "comms_logger": {
@@ -190,6 +188,7 @@ def main(args):
 
     if torch.distributed.get_rank() == 0:
         torch.distributed.barrier()
+
     net = model
 
     # Get list of parameters that require gradients.
@@ -235,19 +234,19 @@ def main(args):
             attention_mask = data["attention_mask"]
             labels = data["labels"]
             outputs = model_engine(input_ids=input_ids, attention_mask=attention_mask, labels=None)
-
             loss = criterion(outputs.logits, labels)
 
             model_engine.backward(loss)
             model_engine.step()
-            
+            if i == 0 and epoch == 0:
+                get_accelerator().empty_cache()
     torch.cuda.synchronize()
     t1 = time.time()
     training_time = t1 - t0
     print(f"Training Time taken: {training_time / args.epochs} s")
     print("Finished Training")
-    with open("/home/sabiha/deepspeed_example/training_time.txt", 'a') as file:
-        file.write(f"Training Time taken DeepSpeed with 13 B opt model: {training_time / args.epochs} s \n")
+    with open("~/10cache/examples/training_time.txt", 'a') as file:
+        file.write(f"Training Time taken zero-infinity with 6.7 B opt model: {training_time / args.epochs} s \n")
 
 
 if __name__ == "__main__":

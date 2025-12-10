@@ -54,13 +54,6 @@ class NoGatherHandle:
                 device=get_accelerator().current_device_name(), non_blocking=True).view(param.ds_shape)
         else:
             if not prefetchtable.get_warmup():
-                # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-                #     file.write(f"/deepspeed/runtime/zero/partition_parameters.py#LN585 inside class NoGatherHandle param.ds_id {param.ds_id} GPU_MEMORY_BUFFER.free_buffer_ids {GPU_MEMORY_CACHE.free_buffer_ids} GPU_MEMORY_BUFFER.param_id_to_buffer_id {GPU_MEMORY_CACHE.param_id_to_buffer_id} CPU_MEMORY_BUFFER.free_buffer_ids {CPU_MEMORY_CACHE.free_buffer_ids} CPU_MEMORY_BUFFER.param_id_to_buffer_id {CPU_MEMORY_CACHE.param_id_to_buffer_id} \n")
-                # gpu_buffer_id = GPU_MEMORY_BUFFER.get_free_buffer_id()
-                # cpu_buffer_id =  CPU_MEMORY_BUFFER.get_param_id_to_buffer_id(param.ds_id)
-                # param.ds_tensor.data = GPU_MEMORY_BUFFER.buffers[gpu_buffer_id].add(param.ds_tensor)
-                # GPU_MEMORY_BUFFER.add_param_id_to_buffer_id(param.ds_id, gpu_buffer_id)
-                # CPU_MEMORY_BUFFER.release_buffer_id(param.ds_id, cpu_buffer_id)
                 tensor_element = param.ds_tensor.ds_numel
                 gpu_buffer_id = GPU_MEMORY_CACHE.get_free_buffer_id(tensor_element)
                 index = prefetchtable.get_tensor_id_to_prefetch_list_id(param.ds_id, "fwd")
@@ -76,7 +69,6 @@ class NoGatherHandle:
                     CPU_MEMORY_CACHE.release_buffer_id(param.ds_id, cpu_buffer_id, tensor_element)
                     if prefetchtable.PARAMS_IN_NVME:
                         CPU_MEMORY_CACHE.release_gpu_tensors_cpu_cache_id(param.ds_id, tensor_element)
-                #param.ds_tensor.data = GPU_MEMORY_CACHE.buffers[gpu_buffer_id].add(param.ds_tensor)
                 
                 GPU_MEMORY_CACHE.add_param_id_to_buffer_id(param.ds_id, gpu_buffer_id)
                 GPU_MEMORY_CACHE.add_occupied_buffer_id(param.ds_id, tensor_element)
@@ -85,16 +77,6 @@ class NoGatherHandle:
                 index = prefetchtable.get_tensor_id_to_prefetch_list_id(param.ds_id, "bwd")
                 prefetchtable.get_prefetch_information_list_item(index).current_location = OffloadDeviceEnum.gpu
 
-                # if param.ds_id not in offloadcountinfo.offload_count_dict:
-                #     offloadcountinfo.add_OffloadCount_information(param.ds_id, 1, 0)
-                # else:
-                #     offloadcount = offloadcountinfo.offload_count_dict[param.ds_id]
-                #     offloadcount.gpu_fetch_count += 1
-                # fp16_element_size = torch.tensor([], dtype=torch.float16).element_size()
-                # offloadcountinfo.gpu_read_bytes += (param.ds_tensor.ds_numel * fp16_element_size)
-                
-                # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-                #     file.write(f"/deepspeed/runtime/zero/partition_parameters.py#LN585 inside class NoGatherHandle param.ds_id {param.ds_id} GPU_MEMORY_BUFFER.free_buffer_ids {GPU_MEMORY_CACHE.free_buffer_ids} GPU_MEMORY_BUFFER.param_id_to_buffer_id {GPU_MEMORY_CACHE.param_id_to_buffer_id} CPU_MEMORY_BUFFER.free_buffer_ids {CPU_MEMORY_CACHE.free_buffer_ids} CPU_MEMORY_BUFFER.param_id_to_buffer_id {CPU_MEMORY_CACHE.param_id_to_buffer_id} \n")
             param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(),
                                                  non_blocking=True).view(param.ds_shape)
         self.__param = param
@@ -119,13 +101,6 @@ class NoGatherCoalescedHandle:
                     device=get_accelerator().current_device_name(), non_blocking=True).view(param.ds_shape)
             else:
                 if not prefetchtable.get_warmup():
-                    # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-                    #     file.write(f"/deepspeed/runtime/zero/partition_parameters.py#LN585 inside class NoGatherCoalescedHandle param.ds_id {param.ds_id} GPU_MEMORY_BUFFER.free_buffer_ids {GPU_MEMORY_CACHE.free_buffer_ids} GPU_MEMORY_BUFFER.param_id_to_buffer_id {GPU_MEMORY_CACHE.param_id_to_buffer_id} CPU_MEMORY_BUFFER.free_buffer_ids {CPU_MEMORY_CACHE.free_buffer_ids} CPU_MEMORY_BUFFER.param_id_to_buffer_id {CPU_MEMORY_CACHE.param_id_to_buffer_id} \n")
-                    # gpu_buffer_id = GPU_MEMORY_BUFFER.get_free_buffer_id()
-                    # cpu_buffer_id =  CPU_MEMORY_BUFFER.get_param_id_to_buffer_id(param.ds_id)
-                    # param.ds_tensor.data = GPU_MEMORY_BUFFER.buffers[gpu_buffer_id].add(param.ds_tensor)
-                    # GPU_MEMORY_BUFFER.add_param_id_to_buffer_id(param.ds_id, gpu_buffer_id)
-                    # CPU_MEMORY_BUFFER.release_buffer_id(param.ds_id, cpu_buffer_id)
                     
                     tensor_element = param.ds_tensor.ds_numel
                     gpu_buffer_id = GPU_MEMORY_CACHE.get_free_buffer_id(tensor_element)
@@ -142,8 +117,7 @@ class NoGatherCoalescedHandle:
                         CPU_MEMORY_CACHE.release_buffer_id(param.ds_id, cpu_buffer_id, tensor_element)
                         if prefetchtable.PARAMS_IN_NVME:
                             CPU_MEMORY_CACHE.release_gpu_tensors_cpu_cache_id(param.ds_id, tensor_element)
-                    #param.ds_tensor.data = GPU_MEMORY_CACHE.buffers[gpu_buffer_id].add(param.ds_tensor)
-                
+                    
                     GPU_MEMORY_CACHE.add_param_id_to_buffer_id(param.ds_id, gpu_buffer_id)
                     GPU_MEMORY_CACHE.add_occupied_buffer_id(param.ds_id, tensor_element)
 
@@ -151,16 +125,6 @@ class NoGatherCoalescedHandle:
                     index = prefetchtable.get_tensor_id_to_prefetch_list_id(param.ds_id, "bwd")
                     prefetchtable.get_prefetch_information_list_item(index).current_location = OffloadDeviceEnum.gpu
 
-                    # if param.ds_id not in offloadcountinfo.offload_count_dict:
-                    #     offloadcountinfo.add_OffloadCount_information(param.ds_id, 1, 0)
-                    # else:
-                    #     offloadcount = offloadcountinfo.offload_count_dict[param.ds_id]
-                    #     offloadcount.gpu_fetch_count += 1
-                    # fp16_element_size = torch.tensor([], dtype=torch.float16).element_size()
-                    # offloadcountinfo.gpu_read_bytes += (param.ds_tensor.ds_numel * fp16_element_size)
-
-                    # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-                    #     file.write(f"/deepspeed/runtime/zero/partition_parameters.py#LN585 inside class NoGatherCoalescedHandle param.ds_id {param.ds_id} GPU_MEMORY_BUFFER.free_buffer_ids {GPU_MEMORY_CACHE.free_buffer_ids} GPU_MEMORY_BUFFER.param_id_to_buffer_id {GPU_MEMORY_CACHE.param_id_to_buffer_id} CPU_MEMORY_BUFFER.free_buffer_ids {CPU_MEMORY_CACHE.free_buffer_ids} CPU_MEMORY_BUFFER.param_id_to_buffer_id {CPU_MEMORY_CACHE.param_id_to_buffer_id} \n")
                 param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(),
                                                      non_blocking=True).view(param.ds_shape)
 
@@ -895,8 +859,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         sequence_data_parallel_group=None,
         param_swapper=None,
         param_count_gpu_max=0,
-        #prefetchtable=None,
-        #memory_manager=None,
     ):
         """A context to enable massive model construction for training with
         ZeRO-3. Models are automatically partitioned (or, sharded) across the
@@ -1086,8 +1048,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             self.param_swapper = None
 
         self.param_count_gpu_max = param_count_gpu_max
-        #self.prefetchtable=prefetchtable
-        #self.memory_manager=memory_manager
 
         # If we are provided an already-allocated module to prepare.
         if module is not None:
@@ -1187,14 +1147,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             Init.num_persisted_elements += param.ds_numel
         else:
             param.ds_persist = False
-
-        # if Init.param_count_gpu < self.param_count_gpu_max:
-        #     param.ds_persist = True
-        #     Init.num_persisted_parameters += 1
-        #     Init.num_persisted_elements += param.ds_numel
-        #     Init.param_count_gpu += 1
-        # else:
-        #     param.ds_persist = False
 
         param.is_external_param = False
 
@@ -1527,10 +1479,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         swap_in_flight = []
         for param in params:
             if param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE:
-                #assert param.ds_tensor.final_location == OffloadDeviceEnum.nvme and param.ds_status == ZeroParamStatus.NOT_AVAILABLE
                 swap_in_list.append(param)
             if param.ds_tensor.status == PartitionedParamStatus.INFLIGHT:
-                #assert param.ds_tensor.final_location == OffloadDeviceEnum.nvme and param.ds_status == ZeroParamStatus.NOT_AVAILABLE
                 swap_in_flight.append(param)
         if len(swap_in_list) > 0:
             swap_in_list[0].nvme_swapper.swap_in(swap_in_list, async_op=False)
@@ -1635,18 +1585,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                             index1 = prefetchtable.get_tensor_id_to_prefetch_list_id(param.ds_id, "bwd")
                             prefetchtable.get_prefetch_information_list_item(index1).current_location = OffloadDeviceEnum.nvme
                             param.nvme_swapper.remove_partition([param])
-                            # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-                            #     file.write(f"/deepspeed/runtime/zero/partition_parameters.py#LN585 inside class _partition_param param location NVME param.ds_id {param.ds_id} GPU release buffer id {gpu_buffer_id}  GPU_MEMORY_BUFFER.free_buffer_ids {GPU_MEMORY_CACHE.free_buffer_ids} GPU_MEMORY_BUFFER.param_id_to_buffer_id {GPU_MEMORY_CACHE.param_id_to_buffer_id} CPU_MEMORY_BUFFER.free_buffer_ids {CPU_MEMORY_CACHE.free_buffer_ids} CPU_MEMORY_BUFFER.param_id_to_buffer_id {CPU_MEMORY_CACHE.param_id_to_buffer_id} \n")
-
                         elif prefetchtable.get_prefetch_information_list_item(index).final_location != OffloadDeviceEnum.nvme:
-                            # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-                            #     file.write(f"/deepspeed/runtime/zero/partition_parameters.py#LN585 inside def _partition_param param.ds_id {param.ds_id} GPU_MEMORY_BUFFER.free_buffer_ids {GPU_MEMORY_CACHE.free_buffer_ids} GPU_MEMORY_BUFFER.param_id_to_buffer_id {GPU_MEMORY_CACHE.param_id_to_buffer_id} CPU_MEMORY_BUFFER.free_buffer_ids {CPU_MEMORY_CACHE.free_buffer_ids} CPU_MEMORY_BUFFER.param_id_to_buffer_id {CPU_MEMORY_CACHE.param_id_to_buffer_id} \n")
-                            # gpu_buffer_id = GPU_MEMORY_BUFFER.get_param_id_to_buffer_id(param.ds_id)
-                            # cpu_buffer_id =  CPU_MEMORY_BUFFER.get_free_buffer_id()
-                            # param.ds_tensor.data = CPU_MEMORY_BUFFER.buffers[cpu_buffer_id].add(param.ds_tensor)
-                            # CPU_MEMORY_BUFFER.add_param_id_to_buffer_id(param.ds_id, cpu_buffer_id)
-                            # GPU_MEMORY_BUFFER.release_buffer_id(param.ds_id, gpu_buffer_id)
-
                             tensor_element = param.ds_tensor.ds_numel
                             gpu_buffer_id = GPU_MEMORY_CACHE.get_param_id_to_buffer_id(param.ds_id)
                             if CPU_MEMORY_CACHE.has_free_buffer_id(tensor_element):
@@ -1664,12 +1603,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                     buffer.data.copy_(gpu_param.ds_tensor.data)
                                     gpu_param.ds_tensor.data = buffer.data
                                     gpu_param.nvme_swapper.swap_out_and_release([gpu_param])
-                                    # self.param_swapper.swap_out_and_release_from_buffer([gpu_param], gpu_param.ds_tensor)
                                     CPU_MEMORY_CACHE.release_buffer_id(gpu_param_id, gpu_param_buffer_id, tensor_element)
                                     CPU_MEMORY_CACHE.release_gpu_tensors_cpu_cache_id(gpu_param_id, tensor_element)
                                     cpu_buffer_id = CPU_MEMORY_CACHE.get_free_buffer_id(tensor_element)
-                                    # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-                                    #     file.write(f"/deepspeed/runtime/zero/partition_parameters.py#LN585 inside class _partition_param param location GPU param.ds_id {gpu_param_id} releasing CPU buffer {gpu_param_buffer_id} \n")
                                 else:
                                     occupied_param_id = CPU_MEMORY_CACHE.get_occupied_buffer_id(tensor_element)
                                     occupied_param = params_id_list[occupied_param_id]
@@ -1682,16 +1618,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                     buffer.data.copy_(occupied_param.ds_tensor.data)
                                     occupied_param.ds_tensor.data = buffer.data
                                     occupied_param.nvme_swapper.swap_out_and_release([occupied_param])
-                                    # self.param_swapper.swap_out_and_release_from_buffer([occupied_param], occupied_param.ds_tensor)
                                     CPU_MEMORY_CACHE.release_buffer_id(occupied_param_id, occupied_buffer_id, tensor_element)
                                     CPU_MEMORY_CACHE.release_gpu_tensors_cpu_cache_id(occupied_param_id, tensor_element)
                                     cpu_buffer_id = CPU_MEMORY_CACHE.get_free_buffer_id(tensor_element)
-                                    # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-                                    #     file.write(f"/deepspeed/runtime/zero/partition_parameters.py#LN585 inside class _partition_param param location CPU param.ds_id {occupied_param_id} releasing CPU buffer {occupied_buffer_id} \n")
-
+                                    
                             if prefetchtable.get_prefetch_information_list_item(index).final_location == OffloadDeviceEnum.gpu:
                                 CPU_MEMORY_CACHE.add_gpu_tensors_cpu_cache_id(tensor_element, param.ds_id)
-                            #param.ds_tensor.data = CPU_MEMORY_CACHE.buffers[cpu_buffer_id].add(param.ds_tensor)
                             param.ds_tensor.data = CPU_MEMORY_CACHE.add(param.ds_tensor, cpu_buffer_id)
                             CPU_MEMORY_CACHE.add_param_id_to_buffer_id(param.ds_id, cpu_buffer_id)
                             CPU_MEMORY_CACHE.add_occupied_buffer_id(param.ds_id, tensor_element)
@@ -1700,9 +1632,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                             prefetchtable.get_prefetch_information_list_item(index1).current_location = OffloadDeviceEnum.cpu
                             index1 = prefetchtable.get_tensor_id_to_prefetch_list_id(param.ds_id, "bwd")
                             prefetchtable.get_prefetch_information_list_item(index1).current_location = OffloadDeviceEnum.cpu
-                            # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-                            #     file.write(f"/deepspeed/runtime/zero/partition_parameters.py#LN585 inside class _partition_param param location CPU param.ds_id {param.ds_id} GPU release buffer id {gpu_buffer_id}  GPU_MEMORY_BUFFER.free_buffer_ids {GPU_MEMORY_CACHE.free_buffer_ids} GPU_MEMORY_BUFFER.param_id_to_buffer_id {GPU_MEMORY_CACHE.param_id_to_buffer_id} CPU_MEMORY_BUFFER.free_buffer_ids {CPU_MEMORY_CACHE.free_buffer_ids} CPU_MEMORY_BUFFER.param_id_to_buffer_id {CPU_MEMORY_CACHE.param_id_to_buffer_id} \n")
-                            #param.ds_tensor = param.ds_tensor.to('cpu')
+                            
                     else:
                         tensor_element = param.ds_tensor.ds_numel
                         gpu_buffer_id = GPU_MEMORY_CACHE.get_param_id_to_buffer_id(param.ds_id)
@@ -1716,22 +1646,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         index1 = prefetchtable.get_tensor_id_to_prefetch_list_id(param.ds_id, "bwd")
                         prefetchtable.get_prefetch_information_list_item(index1).current_location = OffloadDeviceEnum.cpu
 
-                    # if param.ds_id not in offloadcountinfo.offload_count_dict:
-                    #     offloadcountinfo.add_OffloadCount_information(param.ds_id, 0, 1)
-                    # else:
-                    #     offloadcount = offloadcountinfo.offload_count_dict[param.ds_id]
-                    #     offloadcount.gpu_offload_count += 1
-                    # fp16_element_size = torch.tensor([], dtype=torch.float16).element_size()
-                    # offloadcountinfo.gpu_write_bytes += (param.ds_tensor.ds_numel * fp16_element_size)
-
                 return
 
             tensor_size = self._aligned_size(param)
             partition_size = tensor_size // self.num_partitions
             if param.ds_tensor is None:
                 final_location = None
-                # if self.remote_device == OffloadDeviceEnum.nvme and self.param_swapper.swappable_tensor(
-                #         numel=partition_size) and not prefetchtable.get_warmup():
                 if self.remote_device == OffloadDeviceEnum.nvme and self.param_swapper.swappable_tensor(
                          numel=partition_size):
                     final_location = OffloadDeviceEnum.nvme
@@ -1740,24 +1660,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     partitioned_tensor.data = buffer.data
                     print_rank_0(f"ID {param.ds_id} Initializing partition for the first time for nvme offload.")
                     
-                    # index = prefetchtable.get_tensor_id_to_prefetch_list_id(param.ds_id, "fwd")
-                    # prefetchtable.get_prefetch_information_list_item(index).loc = OffloadDeviceEnum.nvme
-                    # index = prefetchtable.get_tensor_id_to_prefetch_list_id(param.ds_id, "bwd")
-                    # prefetchtable.get_prefetch_information_list_item(index).loc = OffloadDeviceEnum.nvme
-
                 else:
-                    #if param.ds_persist and not prefetchtable.get_warmup():
                     if param.ds_persist:
                         device = self.local_device
-                    #elif self.remote_device == OffloadDeviceEnum.nvme and not prefetchtable.get_warmup():
                     elif self.remote_device == OffloadDeviceEnum.nvme:
                         device = OffloadDeviceEnum.cpu
                     else:
-                        # if prefetchtable.get_warmup():
-                        #     device = self.local_device
-                        # else:
-                        #     device = self.remote_device
-                        #device = self.local_device
                         device = self.remote_device
                     
                     partitioned_tensor = torch.empty(partition_size, dtype=param.dtype, device=device)
@@ -1768,11 +1676,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
                     if device == OffloadDeviceEnum.cpu and self.pin_memory:
                         partitioned_tensor = get_accelerator().pin_memory(partitioned_tensor)
-
-                    # index = prefetchtable.get_tensor_id_to_prefetch_list_id(param.ds_id, "fwd")
-                    # prefetchtable.get_prefetch_information_list_item(index).loc = OffloadDeviceEnum.cpu if device == OffloadDeviceEnum.cpu else OffloadDeviceEnum.gpu
-                    # index = prefetchtable.get_tensor_id_to_prefetch_list_id(param.ds_id, "bwd")
-                    # prefetchtable.get_prefetch_information_list_item(index).loc = OffloadDeviceEnum.cpu if device == OffloadDeviceEnum.cpu else OffloadDeviceEnum.gpu
 
                 partitioned_tensor.requires_grad = False
                 param.ds_tensor = partitioned_tensor

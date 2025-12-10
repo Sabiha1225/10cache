@@ -119,29 +119,18 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
         if swap_info is None:
             return
 
-        #self._flush_gradient_swapper(self.gradient_swapper)
-
-        #required_buffer_count = len(swap_info.tensors) + (1 if swap_info.has_gradients() else 0)
-        # aligned_numel = self._io_aligned_numel(swap_info.numel())
-        # pinned_buffers = self.swap_buffer_manager.allocate(num_elems=aligned_numel,
-        #                                                    count=required_buffer_count,
-        #                                                    dtype=parameter.dtype)
-
         pinned_buffers = []
         pinned_buffers.append(OPTIMIZER_STATES_CACHE.get(buffer_id, parameter.ds_numel))
         pinned_buffers.append(OPTIMIZER_STATES_CACHE.get_momentum_buffer(buffer_id, parameter.ds_numel))
         pinned_buffers.append(OPTIMIZER_STATES_CACHE.get_variance_buffer(buffer_id, parameter.ds_numel))
-        #pinned_buffers.append(OPTIMIZER_STATES_CACHE.get_gradient_buffer(buffer_id, parameter.ds_numel))
-
+        
         for t, buffer in zip(swap_info.tensors, pinned_buffers):
             t.data = buffer
 
         READ_TIMER = 'swap_submit_read_param'
         self._start_timer(SWAP_IN_PARAM_TIMER)
         self._start_timer(READ_TIMER)
-        # swap_in_tensors(self.aio_handle, pinned_buffers, swap_info.swap_paths)
-        # with open("/home/sabiha/deepspeed_example/deepspeed_fp32_reads_writes.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def swap_in_optimizer_state_from_buffer reading aio_read_handle parameter.ds_id {parameter.ds_id} parameter.ds_numel {parameter.ds_numel} \n")
+        
         swap_in_tensors(self.aio_read_handle, pinned_buffers, swap_info.swap_paths)
         self._stop_timer(READ_TIMER)
         self._stop_timer(SWAP_IN_PARAM_TIMER)
@@ -150,25 +139,12 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
         self.pending_reads += len(pinned_buffers)
         self.inflight_params.append(parameter.ds_id)
 
-        # self._swap_in_parameter(aio_handle=self.aio_handle,
-        #                         parameter=parameter,
-        #                         dest_buffers=pinned_buffers[:required_buffer_count])
-        
-        #WAIT_TIMER = 'swap_wait_read_param'
-
         swap_bytes = sum([buffer.numel() * buffer.element_size() for buffer in pinned_buffers])
 
-        # self._start_timer(WAIT_TIMER)
         self.aio_read_handle.wait()
         self.pending_reads = 0
         self.inflight_params = []
-        # self._stop_timer(WAIT_TIMER)
-
-        # compute_lengths = [swap_info.numel()] * len(swap_info.tensors)
-        # compute_buffers = get_sized_buffers(dest_buffers, compute_lengths)
         
-
-        # self._log_timers([READ_TIMER, WAIT_TIMER])
         if DEBUG_MODE and dist.get_rank() == 0:
             logger.info(f'optimizer_param_swap_in: {(swap_bytes/(1024**3)):5.2f} GB')
 
@@ -176,7 +152,6 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
         parameter.grad = gradient_tensor
 
         self._start_timer(SWAP_IN_GRADIENT_TIMER)
-        #self._swap_in_gradients(aio_handle=self.aio_handle, parameter=parameter, dest_buffer=pinned_buffers[-1])
         if swap_info.has_gradients():
             param_gradients = swap_info.swapped_gradients.values()
             swap_buffers = [gradient_tensor.narrow(0, grad.offset, grad.length) for grad in param_gradients]
@@ -185,81 +160,33 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
             SWAP_WAIT_GRADIENTS = 'swap_submit_wait_gradient'
 
             self._start_timer(SWAP_READ_GRADIENTS)
-            #swap_in_tensors(self.aio_handle, swap_buffers, swap_paths)
             swap_in_tensors(self.aio_read_handle_grad, swap_buffers, swap_paths)
             self._stop_timer(SWAP_READ_GRADIENTS)
 
             self.pending_reads_grad += len(swap_buffers)
 
             self._start_timer(SWAP_WAIT_GRADIENTS)
-            #assert len(swap_buffers) == aio_handle.wait()
             self.aio_read_handle_grad.wait()
             self.pending_reads_grad = 0
             self._stop_timer(SWAP_WAIT_GRADIENTS)
 
-            #self._log_timers([SWAP_READ_GRADIENTS, SWAP_WAIT_GRADIENTS])
-
         self._stop_timer(SWAP_IN_GRADIENT_TIMER)
         self.timer_names.add(SWAP_IN_GRADIENT_TIMER)
 
-        # with open("/home/sabiha/deepspeed_example/deepspeed_fp32_reads_writes.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def swap_in_optimizer_state_from_buffer reading aio_read_handle_grad self.pending_reads {self.pending_reads} self.pending_reads_grad {self.pending_reads_grad} self.inflight_params {self.inflight_params} \n")
-
-        # if self.pending_reads >= 6:
-        #     self.synchronize_reads()
-
-    # @contextmanager
-    # def timeout(self, seconds):
-    #     def signal_handler(signum, frame):
-    #         raise TimeoutError("Timed out!")
-        
-    #     # Set the signal handler and a timer
-    #     signal.signal(signal.SIGALRM, signal_handler)
-    #     signal.alarm(seconds)
-        
-    #     try:
-    #         yield
-    #     finally:
-    #         # Disable the alarm
-    #         signal.alarm(0)
 
     def synchronize_reads(self):
-        # if self.pending_reads == 0:
-        #     return
-
         WAIT_TIMER = 'swap_wait_read_param'
         self._start_timer(WAIT_TIMER)
-        #self.aio_handle.wait()
+        
         if self.pending_reads > 0:
-            # try:
-            #     with self.timeout(seconds=30):  # Add timeout
-            #         value = self.aio_read_handle.wait()
-            # except TimeoutError:
-            #     # with open("/home/sabiha/deepspeed_example/deepspeed_fp32_reads_writes.txt", 'a') as file:
-            #     #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def synchronize_reads reading aio_read_handle Timeout waiting for {self.pending_reads} reads to complete  \n")
-            #logger.warning(f"Timeout waiting for {self.pending_reads} reads to complete")
-            #value = self.aio_read_handle.wait()
-            #value1 = self.aio_read_handle.wait()
             self.aio_read_handle.wait()
-            #assert self.pending_reads == self.aio_read_handle.wait()
-            # with open("/home/sabiha/deepspeed_example/deepspeed_fp32_reads_writes.txt", 'a') as file:
-            #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def synchronize_reads reading aio_read_handle value {value} self.pending_reads {self.pending_reads}  \n")
-            #assert value == self.pending_reads
             self.pending_reads = 0
             self.inflight_params = []
         
         if self.pending_reads_grad > 0:
             assert self.pending_reads_grad == self.aio_read_handle_grad.wait()
-            #value = self.aio_read_handle_grad.wait()
-            # with open("/home/sabiha/deepspeed_example/deepspeed_fp32_reads_writes.txt", 'a') as file:
-            #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def synchronize_reads reading aio_read_handle_grad value {value} self.pending_reads {self.pending_reads_grad} \n")
-            #assert value == self.pending_reads_grad
             self.pending_reads_grad = 0
-
-        # assert self.pending_reads == self.aio_handle.wait()
         self._stop_timer(WAIT_TIMER)
-        #self.pending_reads = 0
-        #self.inflight_params = []
 
     def check_inflight(self, parameter):
         if parameter.ds_id in self.inflight_params:
@@ -320,40 +247,17 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
         for tensor, path in zip(swap_info.tensors, swap_info.swap_paths):
             pinned_tensors.append(tensor.data)
             pinned_paths.append(path)
-        # pinned_tensors, pinned_paths, unpinned_tensors, unpinned_paths = self._separate_pinned_tensors(swap_info)
         swap_bytes = sum([self._io_aligned_numel(t.numel()) * t.element_size() for t in swap_info.tensors])
 
         WRITE_TIMER = 'swap_submit_write'
         self._start_timer(WRITE_TIMER)
-
-        # with open("/home/sabiha/deepspeed_example/deepspeed_fp32_reads_writes.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def swap_out_optimizer_state_from_buffer writing aio_write_handle parameter.ds_id {parameter.ds_id} parameter.ds_numel {parameter.ds_numel} \n")
-        #swap_out_tensors(self.aio_handle, pinned_tensors, pinned_paths)
         swap_out_tensors(self.aio_write_handle, pinned_tensors, pinned_paths)
-        #self.aio_handle.wait()
-        #assert self.aio_handle.wait() == len(pinned_tensors)
         value = self.aio_write_handle.wait()
-        # with open("/home/sabiha/deepspeed_example/deepspeed_fp32_reads_writes.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def swap_out_optimizer_state_from_buffer writing aio_write_handle value {value} len(pinned_tensors) {len(pinned_tensors)} \n")
         assert value == len(pinned_tensors)
         for t in pinned_tensors:
             t.data = torch.Tensor()
 
         self._stop_timer(WRITE_TIMER)
-
-        # if len(unpinned_tensors) > 0:
-        #     pinned_buffers = self.swap_buffer_manager.allocate_all(num_elems=self.largest_numel, dtype=self.dtype)
-        #     self._swap_out_unpinned_tensors(aio_handle=self.aio_handle,
-        #                                     unpinned_tensors=unpinned_tensors,
-        #                                     dest_paths=unpinned_paths,
-        #                                     pinned_buffers=pinned_buffers)
-        #     self.allocated_swap_buffers += pinned_buffers
-
-        #     for t in unpinned_tensors:
-        #         t.data = torch.Tensor()
-
-        #self.swap_buffer_manager.free(self.allocated_swap_buffers)
-        #self.allocated_swap_buffers = []
 
         self._stop_timer(SWAP_OUT_PARAM_TIMER)
         self.timer_names.add(SWAP_OUT_PARAM_TIMER)

@@ -265,13 +265,15 @@ def main(args):
 
             model_engine.backward(loss)
             model_engine.step()
+            if i >= 30:
+               break
     torch.cuda.synchronize()
     t1 = time.time()
     training_time = t1 - t0
-    print(f"Training Time taken: {training_time / args.epochs} s")
+    print(f"Training Time taken for 30 iterations: {training_time} s")
     print("Finished Training")
-    with open("/home/sabiha/deepspeed_example/training_time_eval.txt", 'a') as file:
-        file.write(f"Training Time taken smart-cache with 13b opt model: {training_time / args.epochs} s \n")
+    with open("~/10cache/examples/training_time.txt", 'a') as file:
+        file.write(f"Training Time taken 10cache with 13b opt model: {training_time} s \n")
 
 
 if __name__ == "__main__":

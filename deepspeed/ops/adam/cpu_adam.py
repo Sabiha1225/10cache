@@ -8,7 +8,6 @@ from cpuinfo import get_cpu_info
 from deepspeed.utils import logger
 from deepspeed.utils.logging import should_log_le
 from deepspeed.ops.op_builder import CPUAdamBuilder
-# from deepspeed.runtime.utils import prefetchtable, OPTIMIZER_STATES_CACHE
 
 
 class DeepSpeedCPUAdam(torch.optim.Optimizer):
@@ -180,8 +179,6 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                         state['exp_avg_sq'] = OPTIMIZER_STATES_CACHE.get_variance_buffer(buffer_id, p.ds_numel)
                         state['exp_avg_sq'].zero_()
                         #memory_format=torch.preserve_format)
-                        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-                        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def step buffer_id {buffer_id} p.ds_id {p.ds_id} \n")
 
                 state['step'] += 1
                 beta1, beta2 = group['betas']

@@ -131,8 +131,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
         param_count_gpu=0,
-        #prefetchtable=None,
-        #memory_manager=None,
     ):
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
@@ -154,9 +152,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             raise SystemError("Cannot use fp16 without accelerator.")
 
         self.optimizer = init_optimizer
-        #self.prefetchtable = prefetchtable
-        #self.memory_manager = memory_manager
-        #self.active_tensor_window = []
 
         # Use torch (un)flatten ops
         self.flatten = _flatten_dense_tensors
@@ -240,7 +235,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self.deepspeed_adam_offload = (self.offload_optimizer and type(init_optimizer) == DeepSpeedCPUAdam)
 
-        #self.device = get_accelerator().current_device_name() if not self.offload_optimizer or prefetchtable.get_warmup() else OffloadDeviceEnum.cpu
         self.device = get_accelerator().current_device_name() if not self.offload_optimizer else OffloadDeviceEnum.cpu
         
         ### streams used for overlapping computation with communication
@@ -350,13 +344,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.max_param_reduce_events: int = 2
 
         self.param_dict = {}
-        #self.tensor_list = {}
-        #self.tensor_fp32_param_flat = []
-        #self.tensor_fp32_param_flat_next_swappable = []
-        #self.tensor_param_id_to_grad_flat = {}
-        #self.tensor_grad = {}
-        #self.tensor_grad_fp32 = {}
-        #self.param_grad_module = {}
 
         # map between param_id and bool to specify if a param is in this partition
         self.is_param_in_current_partition = {}
@@ -376,7 +363,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 param_id = self.get_param_id(param)
                 self.param_dict[param_id] = param
                 self.params_already_reduced[param_id] = False
-                #self.tensor_list[param_id] = param
                 params_id_list[param_id] = param
         #Largest partitioned param
         largest_partitioned_param_numel = 0
@@ -460,20 +446,16 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 CPU_MEMORY_CACHE.add_free_bufferes(tensor_size, int(tensor_size), c + 3, self.dtype, 'cpu')
 
     def tensor_sized_ratio_correction(self, buffer_size_count_mapping):
-        #sorted_mapping = dict(sorted(buffer_size_count_mapping.items(), key=lambda item: item[1]))
         max_key = max(buffer_size_count_mapping, key=buffer_size_count_mapping.get)
         for key in buffer_size_count_mapping:
             if buffer_size_count_mapping[key] != 1 and buffer_size_count_mapping[key] != 2 and buffer_size_count_mapping[key] < min_buffer_count :
                 if int(key) % int(max_key) == 0 and buffer_size_count_mapping[max_key] > 100:
-                    # buffer_size_count_mapping[key] += 1
-                    # buffer_size_count_mapping[max_key] -= int(int(key) / int(max_key))
                     key_remainder = (min_buffer_count - buffer_size_count_mapping[key])
                     per_count = int(int(key) / int(max_key))
                     if buffer_size_count_mapping[max_key] - (key_remainder * per_count) > 100:
                         buffer_size_count_mapping[key] += key_remainder
                         buffer_size_count_mapping[max_key] -= (key_remainder * per_count)
                     else:
-                        #if int((buffer_size_count_mapping[max_key] - 100) / per_count) > 0:
                         key_remainder = int((buffer_size_count_mapping[max_key] - 100) / per_count)
                         buffer_size_count_mapping[key] += key_remainder
                         buffer_size_count_mapping[max_key] -= key_remainder * per_count
@@ -510,9 +492,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                         buffer_size_count_mapping[key] += 5
                         buffer_size_count_mapping[sorted_keys[1]] -= 1
 
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def tensor_sized_ratio_correction_fp32 buffer_size_count_mapping {buffer_size_count_mapping}  \n")
-
         return buffer_size_count_mapping
 
 
@@ -524,18 +503,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             count = int(tensor_size) * c
             total_tensors += count
             self.param_tensor_count_total += c
-            #total_tensors += c
             self.tensor_size_distribution[tensor_size] = count * 1.0
-            #self.tensor_size_distribution[tensor_size] = c * 1.0
-            # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-            #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def calculate_tensor_size_distribution tensor_size_dict tensor_size {tensor_size} count {c}  \n")
-
+            
         for tensor_size, c in self._get_param_coordinator(training=True).tensor_size_dict.items():
             self.tensor_size_distribution[tensor_size] = self.tensor_size_distribution[tensor_size] / total_tensors
-
-        # for k, v in self.tensor_size_distribution.items():
-            # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-            #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def calculate_tensor_size_distribution self.tensor_size_distribution tensor_size {k} percentage {v}  \n")
 
     def calculate_tensor_size_distribution_optimizer_states(self):
         total_tensors = 0
@@ -553,87 +524,47 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             new_tensor_size = int(tensor_size/fp16_element_size) * fp32_element_size
             self.tensor_size_distribution_optimizer_states[new_tensor_size] = self.tensor_size_distribution_optimizer_states[new_tensor_size] / total_tensors
 
-        # for k, v in self.tensor_size_distribution.items():
-            # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-            #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def calculate_tensor_size_distribution self.tensor_size_distribution tensor_size {k} percentage {v}  \n")
-
-
 
     def allocate_gpu_cache_memory(self):
         
-        #gpu_available_memory = memory_manager.get_gpu_available_memory()
         gpu_available_memory_nvidia_smi = memory_manager.get_gpu_available_memory_nvidia_smi()
         gpu_available_memory = gpu_available_memory_nvidia_smi / additional_buffer_factor
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def allocate_gpu_cache_memory gpu_available_memory after additional_buffer_factor {gpu_available_memory}  \n")
         for tensor_size, c in self._get_param_coordinator(training=True).tensor_size_dict.items():
             if c == 1 or c == 2:
                 GPU_TENSOR_SIZE_COUNT[tensor_size] = c
             elif c > 2:
-                #count = min(round((self.tensor_size_distribution[tensor_size] * gpu_available_memory) / int(tensor_size)), round((c * 2)/3))
-                #count = min(round((self.tensor_size_distribution[tensor_size] * gpu_available_memory) / int(tensor_size)), round(c * .60))
-                #count = min(round((self.tensor_size_distribution[tensor_size] * gpu_available_memory) / int(tensor_size)), round(c * .50))
                 count = min(round((self.tensor_size_distribution[tensor_size] * gpu_available_memory) / int(tensor_size)), c)
+                #count = min(round((self.tensor_size_distribution[tensor_size] * gpu_available_memory) / int(tensor_size)), c + 10)
                 GPU_TENSOR_SIZE_COUNT[tensor_size] = count
-                # if tensor_size == 65798144:
-                #     GPU_TENSOR_SIZE_COUNT[tensor_size] = GPU_TENSOR_SIZE_COUNT[tensor_size] + 3
-                # if tensor_size == 33554432:
-                #     GPU_TENSOR_SIZE_COUNT[tensor_size] = GPU_TENSOR_SIZE_COUNT[tensor_size] + 10
-
+                
         self.tensor_sized_ratio_correction(GPU_TENSOR_SIZE_COUNT)
-        # for tensor_size, c in GPU_TENSOR_SIZE_COUNT.items():
-        #     with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #         file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def allocate_gpu_cache_memory after tuning gpu buffer count tensor_size {tensor_size} count {c} self.dtype {self.dtype} \n")
-
+        
         GPU_MEMORY_CACHE.add_free_bufferes(GPU_TENSOR_SIZE_COUNT, self.dtype, get_accelerator().current_device_name())
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def allocate_gpu_cache_memory GPU Free Memory {memory_manager.get_gpu_available_memory_nvidia_smi()} GPU free buffer ids {GPU_MEMORY_CACHE.free_buffer_ids} \n")
-
     
     def allocate_cpu_cache_memory(self):
         
         self.fp16_groups[0][0].nvme_swapper.allocate_buffer(nvme_buffer_space, self.largest_param_numel)
-        #self.move_param32_to_cpu()
-        #self.move_param_32_grad_to_nvme()
         self.move_param_32_grad_to_nvme_optimized()
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def allocate_cpu_cache_memory cpu_available_memory {memory_manager.get_cpu_available_memory()} \n")
         self.move_params16_grad_to_cpu()
         cpu_available_memory = memory_manager.get_cpu_available_memory()
         cpu_available_memory = cpu_available_memory / cpu_additional_buffer_factor
-        #cpu_available_memory = cpu_available_memory / additional_buffer_factor
-        #cpu_available_memory = cpu_available_memory / 3.5
         
         for tensor_size, c in self._get_param_coordinator(training=True).tensor_size_dict.items():
             if c == 1 or c == 2:
                 CPU_TENSOR_SIZE_COUNT[tensor_size] = c
             elif c > 2:
-                #12 for opt_6.7b
-                count = min(round((self.tensor_size_distribution[tensor_size] * cpu_available_memory) / int(tensor_size)), round((c - GPU_TENSOR_SIZE_COUNT[tensor_size]) + 6))
+                count = min(round((self.tensor_size_distribution[tensor_size] * cpu_available_memory) / int(tensor_size)), round((c - GPU_TENSOR_SIZE_COUNT[tensor_size]) + 12))
                 CPU_TENSOR_SIZE_COUNT[tensor_size] = count
-                # if tensor_size == 8192:
-                #     CPU_TENSOR_SIZE_COUNT[tensor_size] = CPU_TENSOR_SIZE_COUNT[tensor_size] + 20
-                # if tensor_size == 8388608:
-                #     CPU_TENSOR_SIZE_COUNT[tensor_size] = CPU_TENSOR_SIZE_COUNT[tensor_size] + 20
-
+                
         self.tensor_sized_ratio_correction(CPU_TENSOR_SIZE_COUNT)
-        # for tensor_size, c in CPU_TENSOR_SIZE_COUNT.items():
-        #     with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #         file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def allocate_gpu_cache_memory after tuning cpu buffer count tensor_size {tensor_size} count {c} \n")
         
         CPU_MEMORY_CACHE.add_free_bufferes(CPU_TENSOR_SIZE_COUNT, self.dtype, 'cpu')
-
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def allocate_gpu_cache_memory CPU free buffer ids {CPU_MEMORY_CACHE.free_buffer_ids} \n")
 
     def allocate_optimizer_states_cache_memory(self):
 
         self.calculate_tensor_size_distribution_optimizer_states()
         
         cpu_available_memory = memory_manager.get_cpu_available_memory()
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def allocate_cpu_cache_memory cpu_available_memory {cpu_available_memory}  \n")
-        
         cpu_available_memory = cpu_available_memory * optimizer_states_buffer_factor
         fp16_element_size = torch.tensor([], dtype=torch.float16).element_size()
         fp32_element_size = torch.tensor([], dtype=torch.float32).element_size()
@@ -643,25 +574,16 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             if c == 1 or c == 2:
                 OPTIMIZER_STATES_TENSOR_SIZE_COUNT[new_tensor_size] = c
             elif c > 2:
-                #count = round((self.tensor_size_distribution_optimizer_states[new_tensor_size] * cpu_available_memory) / (int(new_tensor_size)*4))
                 count = min(round((self.tensor_size_distribution_optimizer_states[new_tensor_size] * cpu_available_memory) / (int(new_tensor_size)*4)), c)
                 OPTIMIZER_STATES_TENSOR_SIZE_COUNT[new_tensor_size] = count
 
         # do a checking if a key value is equal to the exact count then we will not modify that one 
         self.tensor_sized_ratio_correction_fp32(OPTIMIZER_STATES_TENSOR_SIZE_COUNT)
-        # for tensor_size, c in OPTIMIZER_STATES_TENSOR_SIZE_COUNT.items():
-        #     with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #         file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def allocate_optimizer_states_cache_memory tensor_size {tensor_size} count {c} \n")
         
         OPTIMIZER_STATES_CACHE.add_free_bufferes(OPTIMIZER_STATES_TENSOR_SIZE_COUNT, torch.float32, 'cpu')
 
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def allocate_gpu_cache_memory CPU free buffer ids {CPU_MEMORY_CACHE.free_buffer_ids} \n")
-
-
     def clear_cpu_memory(self):
 
-        #with torch.no_grad():
         del self.fp16_partitioned_groups_flat
         del self.fp16_partitioned_groups_flat_numel
         del self.fp16_partitioned_groups_flat_id
@@ -688,26 +610,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         temp_active_tensor_window_threshold = 0
         for tensor_size, c in GPU_TENSOR_SIZE_COUNT.items():
             temp_active_tensor_window_threshold += c
-            # if c == 1 or c == 2:
-            #     temp_active_tensor_window_threshold += c
-            # else:
-            #     temp_active_tensor_window_threshold += min(GPU_TENSOR_SIZE_COUNT[tensor_size], GPU_TENSOR_SIZE_COUNT[tensor_size] - swap_space_gpu)
-
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def calculate_active_tensor_window temp_active_tensor_window {temp_active_tensor_window_threshold} \n")
         return temp_active_tensor_window_threshold
 
     def calculate_active_tensor_window_cpu(self):
         temp_active_tensor_window_threshold = 0
         for tensor_size, c in CPU_TENSOR_SIZE_COUNT.items():
             temp_active_tensor_window_threshold += c
-            # if c == 1 or c == 2:
-            #     temp_active_tensor_window_threshold += c
-            # else:
-            #     temp_active_tensor_window_threshold += min(CPU_TENSOR_SIZE_COUNT[tensor_size], CPU_TENSOR_SIZE_COUNT[tensor_size] - swap_space_cpu)
-
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def calculate_active_tensor_window temp_active_tensor_window {temp_active_tensor_window_threshold} \n")
         return temp_active_tensor_window_threshold
 
     def calculate_active_tensor_window_fp32(self):
@@ -726,21 +634,14 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.calculate_tensor_size_distribution()
         self.allocate_gpu_cache_memory()
         global gpu_threshold
-        #gpu_threshold = self.calculate_active_tensor_window_gpu() - 80
-        #gpu_threshold = self.calculate_active_tensor_window_gpu()
-        #gpu_threshold = self.calculate_active_tensor_window_gpu() - 15 #opt 6.7 b 15
         gpu_threshold = self.calculate_active_tensor_window_gpu() - 30
         temp_gpu_threshold = 0
         self.allocate_cpu_cache_memory()
         global cpu_threshold
-        #cpu_threshold = self.calculate_active_tensor_window_cpu() - 80
         cpu_threshold = self.calculate_active_tensor_window_cpu()
+        # cpu_threshold = self.calculate_active_tensor_window_cpu() - 20
         temp_cpu_threshold = 0
         #global PARAMS_IN_NVME
-
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def preallocate_memory self.param_tensor_count_total {self.param_tensor_count_total} gpu_threshold {gpu_threshold} cpu_threshold {cpu_threshold} \n")
-        
 
         prefetch_information_list = prefetchtable.get_prefetch_information_list()
         for i in range(gpu_threshold):
@@ -755,10 +656,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             
             if(prefetch_info.tensor_type=="parameter_16" and prefetch_info.fwd=="fwd"):
                 if not GPU_MEMORY_CACHE.has_free_buffer_id(tensor_element):
-                    # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-                    #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def move_param_32_grad_to_nvme_optimized gpu_threshold {gpu_threshold} temp_gpu_threshold {temp_gpu_threshold} GPU_MEMORY_CACHE.free_buffer_ids {GPU_MEMORY_CACHE.free_buffer_ids} \n")
-                    # global gpu_threshold
-                    # gpu_threshold = temp_gpu_threshold
                     break
                 
                 temp_gpu_threshold += 1
@@ -768,10 +665,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 buffer_id = GPU_MEMORY_CACHE.get_free_buffer_id(tensor_element)
                 GPU_MEMORY_CACHE.add_param_id_to_buffer_id(param.ds_id, buffer_id)
                 GPU_MEMORY_CACHE.add_occupied_buffer_id(param.ds_id, tensor_element)
-                #dest = flat_buffer.narrow(0, start, src.ds_numel)
                 if param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE:
-                    # print_rank_0(
-                    #     f"Swapping in {param.ds_id} with partition size {param.partition_numel()} permanently to CPU")
                     param.nvme_swapper.swap_in([param], async_op=False)
                     new_tensor = GPU_MEMORY_CACHE.add(param.ds_tensor, buffer_id)
                     param.nvme_swapper.remove_partition_and_release_buffers([param])
@@ -795,16 +689,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 prefetchtable.get_prefetch_information_list_item(index).final_location = OffloadDeviceEnum.gpu
                 prefetchtable.get_prefetch_information_list_item(index).rank = GPU_RANK
 
-                # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-                #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def preallocate_memory param.ds_id {param.ds_id} location {OffloadDeviceEnum.gpu} \n")
-            
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def preallocate_memory temp_gpu_threshold {temp_gpu_threshold} GPU free_buffer_ids {GPU_MEMORY_CACHE.free_buffer_ids} \n")
-
         #global gpu_threshold
         gpu_threshold = temp_gpu_threshold
         prefetchtable.current_row = gpu_threshold
-        #for i in range(threshold, len(prefetch_information_list)):
+        
         for i in range(gpu_threshold, gpu_threshold + cpu_threshold):
             prefetch_info = prefetch_information_list[i]
             tensor_id = prefetch_info.tensor_id
@@ -818,12 +706,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 break
             elif(prefetch_info.tensor_type=="parameter_16" and prefetch_info.fwd=="fwd"):
                 if not CPU_MEMORY_CACHE.has_free_buffer_id(tensor_element):
-                    # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-                    #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def move_param_32_grad_to_nvme_optimized cpu_threshold {cpu_threshold} temp_cpu_threshold {temp_cpu_threshold} CPU_MEMORY_CACHE.free_buffer_ids {CPU_MEMORY_CACHE.free_buffer_ids} \n")
                     break
                 
                 temp_cpu_threshold += 1
-                #prefetch_info.loc = "CPU"
                 param = self.param_dict[prefetch_info.tensor_id]
                 buffer_id = CPU_MEMORY_CACHE.get_free_buffer_id(tensor_element)
                 CPU_MEMORY_CACHE.add_param_id_to_buffer_id(param.ds_id, buffer_id)
@@ -832,7 +717,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 if param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE:
                     dest = CPU_MEMORY_CACHE.get(buffer_id, tensor_element)
                     param.nvme_swapper.swap_into_buffer(param, dest)
-                    #param.ds_tensor.data = dest.data
                     param.ds_tensor.data = dest
                     param.ds_tensor.status = PartitionedParamStatus.AVAILABLE
                     param.ds_tensor.final_location = OffloadDeviceEnum.cpu
@@ -853,16 +737,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 prefetchtable.get_prefetch_information_list_item(index).final_location = OffloadDeviceEnum.cpu
                 prefetchtable.get_prefetch_information_list_item(index).rank = CPU_RANK
 
-                # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-                #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def preallocate_memory param.ds_id {param.ds_id} location {OffloadDeviceEnum.cpu} \n")
-
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def preallocate_memory CPU free_buffer_ids temp_cpu_threshold {temp_cpu_threshold} {CPU_MEMORY_CACHE.free_buffer_ids} \n")
-        #global cpu_threshold
         cpu_threshold = temp_cpu_threshold
-
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def preallocate_memory self.param_tensor_count_total {self.param_tensor_count_total} gpu_threshold {gpu_threshold} cpu_threshold {cpu_threshold} \n")
 
         if gpu_threshold + cpu_threshold < self.param_tensor_count_total:
 
@@ -901,12 +776,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     prefetchtable.get_prefetch_information_list_item(index).final_location = OffloadDeviceEnum.nvme
                     prefetchtable.get_prefetch_information_list_item(index).rank = NVME_RANK
 
-                    # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-                    #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def preallocate_memory param.ds_id {param.ds_id} location {OffloadDeviceEnum.nvme} \n")
-
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def preallocate_memory prefetchtable.PARAMS_IN_NVME {prefetchtable.PARAMS_IN_NVME} \n")        
-
         self.sub_group_to_group_id_new = {}
         for i, param_group in enumerate(self.trainable_param_groups):
             for param in param_group["params"]:
@@ -914,8 +783,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             
 
     def move_param32_to_cpu(self):
-        # I will optimize more memory allocation - contiguous memory
-        #gradient_dtype = self.fp32_partitioned_groups_flat[0].dtype
         gradient_dtype = torch.float32
         all_params = list(itertools.chain.from_iterable(self.fp16_groups))
         self.fp32_partitioned_groups_flat_new = []
@@ -932,17 +799,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.fp32_partitioned_groups_flat_new[i].requires_grad = True
             self.fp32_partitioned_groups_flat_new[i].grad = gradient_buffer
 
-        # for i, tensor in enumerate(self.fp32_partitioned_groups_flat):
-        #     num_elements = int(self.fp16_partitioned_groups_flat_numel[i])
-        #     subgroup_gradient_buffer = torch.zeros(num_elements, dtype=gradient_dtype, device='cpu')
-        #     self.fp32_partitioned_groups_flat[i] = self.fp32_partitioned_groups_flat[i].to('cpu')
-        #     self.subgroup_to_device[i] = 'cpu'
-        #     self.fp32_partitioned_groups_flat[i].grad = subgroup_gradient_buffer
-
     def move_param_32_grad_to_nvme(self):
-        # if self.swap_optimizer:
-        #     self._configure_tensor_swapping(self.offload_optimizer_config, self.aio_config)
-
+        
         gradient_dtype = torch.float32
         all_params = list(itertools.chain.from_iterable(self.fp16_groups))
         self.fp32_partitioned_groups_flat_new = []
@@ -951,43 +809,32 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.optimizer_swapper.flush_gradients()
         self.optimizer_swapper.clear_swap_info()
 
-        # if self.swap_optimizer:
-        #     self.optimizer_swapper.init_timers()
-
         for i, param in enumerate(all_params):
             num_elements = param.partition_numel() #param.ds_tensor.ds_numel
-            #gradient_buffer = get_accelerator().pin_memory(torch.zeros(num_elements, dtype=gradient_dtype, device='cpu'))
             self.fp32_partitioned_groups_flat_new.append(torch.Tensor())
             self.fp32_partitioned_groups_flat_new[i].ds_id = param.ds_id
 
-            #self.fp32_partitioned_groups_flat_new.append(torch.empty(num_elements, device='cpu', dtype=torch.float32))
             if param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE:
                 unpinned_fp32_buffer = torch.empty(num_elements, device='cpu', dtype=torch.float32)
                 self._swap_in_sub_group_to_flat_buffer(unpinned_fp32_buffer, i)
                 self.optimizer_swapper.initialize_parameters(parameters=[self.fp32_partitioned_groups_flat_new[i]],
                                                                      src_tensors=[unpinned_fp32_buffer])
-                #self._swap_in_sub_group_to_flat_buffer(self.fp32_partitioned_groups_flat_new[i], i)
             else:
                 swappable_fp32_tensors.append(self.fp32_partitioned_groups_flat_new[i])
                 swappable_fp16_src_tensors.append(param.ds_tensor.data.float())
-                #self.fp32_partitioned_groups_flat_new[i].data.copy_(param.ds_tensor.data.float())   #I will allocate it later during tensor distribution in different storage 
             self.fp32_partitioned_groups_flat_new[i].requires_grad = True
             
-            #self.fp32_partitioned_groups_flat_new[i].grad = gradient_buffer
 
         if len(swappable_fp32_tensors) > 0:
             self.optimizer_swapper.initialize_parameters(parameters=swappable_fp32_tensors,
                                                          src_tensors=swappable_fp16_src_tensors)
 
     def move_param_32_grad_to_nvme_optimized(self):
-        # if self.swap_optimizer:
-        #     self._configure_tensor_swapping(self.offload_optimizer_config, self.aio_config)
-
         all_params = list(itertools.chain.from_iterable(self.fp16_groups))
         self.allocate_optimizer_states_cache_memory()
         global fp32_threshold
-        #fp32_threshold = self.calculate_active_tensor_window_fp32() - 20
-        fp32_threshold = min(self.calculate_active_tensor_window_fp32(), len(all_params)) - 20
+        fp32_threshold = min(self.calculate_active_tensor_window_fp32(), len(all_params))
+        #fp32_threshold = min(self.calculate_active_tensor_window_fp32(), len(all_params)) - 20
         temp_fp32_threshold = 0
 
         gradient_dtype = torch.float32
@@ -1000,14 +847,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.optimizer_swapper.flush_gradients()
         self.optimizer_swapper.clear_swap_info()
         self.do_fetch_fp32_nvme = False
-        #global FP32_IN_NVME
-
-        # if self.swap_optimizer:
-        #     self.optimizer_swapper.init_timers()
-
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def move_param_32_grad_to_nvme_optimized fp32_threshold {fp32_threshold} self.calculate_active_tensor_window_fp32() {self.calculate_active_tensor_window_fp32()} len(all_params) {len(all_params)} \n")
-
+        
         for i, param in enumerate(all_params):
             num_elements = param.partition_numel() #param.ds_tensor.ds_numel
             self.fp32_partitioned_groups_flat_new.append(torch.Tensor())
@@ -1015,17 +855,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.fp32_partitioned_groups_flat_new[i].ds_numel = num_elements
             if not prefetchtable.FP32_IN_NVME:
                 if not OPTIMIZER_STATES_CACHE.has_free_buffer_id(num_elements) or fp32_threshold == temp_fp32_threshold:
-                    # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-                    #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def move_param_32_grad_to_nvme_optimized fp32_threshold {fp32_threshold} temp_fp32_threshold {temp_fp32_threshold} free_buffers {OPTIMIZER_STATES_CACHE.free_buffer_ids} \n")
-                    #global fp32_threshold
                     fp32_threshold = temp_fp32_threshold
                     self.fp32_current_row = fp32_threshold
                     prefetchtable.FP32_IN_NVME = True 
                     self.do_fetch_fp32_nvme = True
 
             if not prefetchtable.FP32_IN_NVME:
-                # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-                #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def move_param_32_grad_to_nvme_optimized i {i} num_elements {num_elements} \n")
                 temp_fp32_threshold += 1
                 self.fp32_param_location[i] = OffloadDeviceEnum.cpu
                 self.fp32_active_tensor_window.append(param.ds_id)
@@ -1047,18 +882,11 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     self._swap_in_sub_group_to_flat_buffer(unpinned_fp32_buffer, i)
                     self.optimizer_swapper.initialize_parameters(parameters=[self.fp32_partitioned_groups_flat_new[i]],
                                                                         src_tensors=[unpinned_fp32_buffer])
-                    #self._swap_in_sub_group_to_flat_buffer(self.fp32_partitioned_groups_flat_new[i], i)
                 else:
                     swappable_fp32_tensors.append(self.fp32_partitioned_groups_flat_new[i])
-                    swappable_fp16_src_tensors.append(param.ds_tensor.data.float())
-                    #self.fp32_partitioned_groups_flat_new[i].data.copy_(param.ds_tensor.data.float())   #I will allocate it later during tensor distribution in different storage 
+                    swappable_fp16_src_tensors.append(param.ds_tensor.data.float()) 
             self.fp32_partitioned_groups_flat_new[i].requires_grad = True
             
-            #self.fp32_partitioned_groups_flat_new[i].grad = gradient_buffer
-
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def move_param_32_grad_to_nvme_optimized fp32_threshold {fp32_threshold} prefetchtable.FP32_IN_NVME {prefetchtable.FP32_IN_NVME} \n")
-
         if len(swappable_fp32_tensors) > 0:
             self.optimizer_swapper.initialize_parameters(parameters=swappable_fp32_tensors,
                                                          src_tensors=swappable_fp16_src_tensors)
@@ -1082,8 +910,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             num_elements = param.partition_numel()
 
             self.grad_position[param_id] = [int(i), int(current_offset), int(num_elements)]
-                #print(f"param id {param_id} i:{i}, ds_tensor {num_elements} numel {param.numel()}")
-                #current_offset += num_elements
 
 
     def initialize_ds_offload(
@@ -1120,9 +946,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                     zero_quantized_weights=zero_quantized_weights,
                                     zero_quantized_nontrainable_weights=zero_quantized_nontrainable_weights,
                                     param_count_gpu=self.param_count_gpu,
-                                    #prefetchtable=self.prefetchtable,
-                                    #memory_manager=self.memory_manager,
-                                    #active_tensor_window=self.active_tensor_window,
                                     )
 
     def _get_trainable_parameter_groups(self):
@@ -1140,17 +963,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 else:
                     trainable_param_group[key] = param_group[key]
             param_groups.append(trainable_param_group)
-
-        # optim_state = self.optimizer.state_dict()
-
-        # with open("/home/sabiha/deepspeed_example/deepspeed_mine_change.txt", 'a') as file:
-        #         file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def _get_trainable_parameter_groups len(self.optimizer.state) {len(self.optimizer.param_groups)}  \n")
-
-        # for param, state in self.optimizer.state.items():
-        #     with open("/home/sabiha/deepspeed_example/deepspeed_mine_change.txt", 'a') as file:
-        #         file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def _get_trainable_parameter_groups param.ds_id {param.ds_id}  \n")
-        #     for k, v in state.items():
-        #         file.write(f"/deepspeed/runtime/zero/stage3.py#LN481 inside def _get_trainable_parameter_groups param.ds_id k {k} v {v}  \n")
 
         return param_groups
 
@@ -1195,7 +1007,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.grad_partitions_flat_buffer: Tensor = torch.zeros(sum(p.partition_numel() for p in all_params),
                                                                dtype=self.gradient_accumulation_dtype,
                                                                device=self.device)
-        #if self.offload_optimizer_pin_memory and not prefetchtable.get_warmup():
         if self.offload_optimizer_pin_memory:
             self.grad_partitions_flat_buffer = get_accelerator().pin_memory(self.grad_partitions_flat_buffer)
 
@@ -1203,7 +1014,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         for param in all_params:
             self.__param_id_to_grad_partition[param.ds_id] = self.grad_partitions_flat_buffer.narrow(
                 0, offset, param.partition_numel())
-            #self.tensor_param_id_to_grad_flat[param.ds_id] = self.__param_id_to_grad_partition[param.ds_id]
             offset += param.partition_numel()
 
     def _link_all_hp_params(self):
@@ -1334,10 +1144,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 param.nvme_swapper.swap_into_buffer(param, dest)
                 src.data = dest.data
                 src.status = PartitionedParamStatus.AVAILABLE
-                # index = prefetchtable.get_tensor_id_to_prefetch_list_id(param.ds_id, "fwd")
-                # prefetchtable.get_prefetch_information_list_item(index).loc = OffloadDeviceEnum.cpu
-                # index = prefetchtable.get_tensor_id_to_prefetch_list_id(param.ds_id, "bwd")
-                # prefetchtable.get_prefetch_information_list_item(index).loc = OffloadDeviceEnum.cpu
             else:
                 assert src.status == PartitionedParamStatus.AVAILABLE, "Partitioned Param must be available here"
                 if not avoid_copy:
@@ -1352,7 +1158,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         aggregate_params_count = 0
 
         for j, param_group in enumerate(self.trainable_param_groups):
-            #params_in_group = sum([p.partition_numel() for p in param_group['params'] if not p.ds_persist])
             params_in_group = sum([p.partition_numel() for p in param_group['params']])
 
             flat_buffer_size = params_in_group
@@ -1375,19 +1180,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _create_fp16_partitions_with_defragmentation(self, fp16_param_groups):
         dist.barrier()
-
-        # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN926 inside def _create_fp16_partitions_with_defragmentation fp16_param_groups {fp16_param_groups} \n")
-
         param_groups: List[List[Parameter]] = tuple(
             self._create_fp16_sub_groups(param_group["params"]) for param_group in fp16_param_groups)
         params_in_gpu = []
         params_in_cpu = []
         total_param_count = 0
         
-        # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN726 inside def _create_fp16_partitions_with_defragmentation len(param_groups) {len(param_groups)}  \n")
-
         # bookkeeping related to param groups
         for param_group_idx, param_group in enumerate(param_groups):
             for sub_group in param_group:
@@ -1559,13 +1357,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     self.subgroup_to_device[i] = 'cpu'
                 else:
                     self.subgroup_to_device[i] = get_accelerator()._name
-            # gpu_param_count = 0
-            # for i in range(sub_group_size):
-            #     if gpu_param_count < self.param_count_gpu:
-            #         self.subgroup_to_device[i] = get_accelerator()._name
-            #         gpu_param_count += 1
-            #     else:
-            #         self.subgroup_to_device[i] = 'cpu'
         
         for i, tensor in enumerate(self.fp16_partitioned_groups_flat):
             num_elements = self.fp16_partitioned_groups_flat_numel[i]
@@ -1616,10 +1407,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 self.fp32_partitioned_groups_flat[i].ds_id = ds_id
 
             self.fp32_partitioned_groups_flat[i].requires_grad = True  # keep this in case internal optimizer uses it
-            # ds_id_begin = str(self.fp16_partitioned_groups_flat_id[i][0])
-            # ds_id_end = str(self.fp16_partitioned_groups_flat_id[i][-1])
-            # self.fp32_partitioned_groups_flat[i].ds_id = ds_id_begin + '_' + ds_id_end
-            
             
         if len(swappable_fp32_tensors) > 0:
             self.optimizer_swapper.initialize_parameters(parameters=swappable_fp32_tensors,
@@ -1655,9 +1442,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     def _create_fp16_sub_groups(self, params_group):
         params_group_numel = sum([param.partition_numel() for param in params_group])
         sub_group_size = self.sub_group_size
-
-        # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN926 inside def _create_fp16_sub_groups sub_group_size {sub_group_size} params_group_numel {params_group_numel} \n")
 
         if sub_group_size is None or sub_group_size >= params_group_numel:
             return [params_group]
@@ -1715,8 +1499,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             if not self.swap_optimizer:
                 return False
 
-            # return self.optimizer_swapper.swappable_tensor(None,
-            #                                             numel=self.fp16_partitioned_groups_flat_numel[sub_group_id])
             return True
         elif not prefetchtable.get_warmup():
             if not self.swap_optimizer:
@@ -1724,7 +1506,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
             return False if self.fp32_param_location[sub_group_id] == OffloadDeviceEnum.cpu else True
 
-            #return True 
 
     def _partitioned_params_swap_out(self, i):
         
@@ -1793,7 +1574,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
             if self.offload_optimizer and not swappable_optimizer_subgroup:
                 subgroup_gradient_buffer = torch.zeros(num_elements, dtype=gradient_dtype, device=self.device)
-                #if self.offload_optimizer_pin_memory and not prefetchtable.get_warmup():
                 if self.offload_optimizer_pin_memory:
                     subgroup_gradient_buffer = get_accelerator().pin_memory(subgroup_gradient_buffer)
 
@@ -2647,6 +2427,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.micro_step_id = 0
 
         if not prefetchtable.get_warmup():
+            if self.swap_optimizer:
+                self.optimizer_swapper.flush_gradients()
             prefetchtable.current_row = gpu_threshold
             self._get_param_coordinator(training=True).check_active_tensor_window()
 
@@ -2703,12 +2485,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         elif not prefetchtable.get_warmup():
             if prefetchtable.FP32_IN_NVME:
                 if self.optimizer_swapper.check_inflight(self.fp32_partitioned_groups_flat_new[sub_group_id]):
-                    # with open("/home/sabiha/deepspeed_example/deepspeed_fp32_reads_writes.txt", 'a') as file:
-                    #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def _prepare_sub_group waiting for self.fp32_partitioned_groups_flat_new[sub_group_id] {self.fp32_partitioned_groups_flat_new[sub_group_id].ds_id}  \n")
                     self.optimizer_swapper.synchronize_reads()
         
-        # if self.fp32_param_location[sub_group_id] == OffloadDeviceEnum.nvme:
-        #     self._optimizer_states_and_gradient_swap_in(sub_group_id, timer_names)
         see_memory_usage(f'After prepare optimizer sub group {sub_group_id}', force=False)
 
     def _optimizer_states_and_gradient_swap_in(self, sub_group_id, timer_names):
@@ -2730,10 +2508,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             see_memory_usage(f'pre-step Before swapping in optimizer tensors {sub_group_id}', force=False)
             timer_names.add(OPTIMIZER_SWAP_IN_STATE_TIMER)
             self.timers(OPTIMIZER_SWAP_IN_STATE_TIMER).start()
-
-            # self.optimizer_swapper.swap_in_optimizer_state(
-            #     parameter=self.fp32_partitioned_groups_flat_new[sub_group_id],
-            #     async_parameter=None)
 
             self.optimizer_swapper.swap_in_optimizer_state_from_buffer(
                 parameter=self.fp32_partitioned_groups_flat_new[sub_group_id],
@@ -2767,18 +2541,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                     self._optimizer_states_and_gradient_swap_out(sub_group_id, timer_names)
                     self.fp32_active_tensor_window.remove(self.fp32_partitioned_groups_flat_new[sub_group_id].ds_id)
 
-                    # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-                    #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def _release_sub_group moving to NVMe released buffer id {buffer_id} tensor id {self.fp32_partitioned_groups_flat_new[sub_group_id].ds_id} size {self.fp32_partitioned_groups_flat_new[sub_group_id].ds_numel} \n")
-
                     self.fp32_param_location[self.fp32_current_row] = OffloadDeviceEnum.cpu
                     self.fp32_active_tensor_window.append(self.fp32_partitioned_groups_flat_new[self.fp32_current_row].ds_id)
                     buffer_id = OPTIMIZER_STATES_CACHE.get_free_buffer_id(self.fp32_partitioned_groups_flat_new[self.fp32_current_row].ds_numel)
                     OPTIMIZER_STATES_CACHE.add_param_id_to_buffer_id(self.fp32_partitioned_groups_flat_new[self.fp32_current_row].ds_id, buffer_id)
                     OPTIMIZER_STATES_CACHE.add_occupied_buffer_id(self.fp32_partitioned_groups_flat_new[self.fp32_current_row].ds_id, self.fp32_partitioned_groups_flat_new[self.fp32_current_row].ds_numel)
                     
-                    # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-                    #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def _release_sub_group moving to CPU occupied buffer id {buffer_id} tensor id {self.fp32_partitioned_groups_flat_new[self.fp32_current_row].ds_id} size {self.fp32_partitioned_groups_flat_new[self.fp32_current_row].ds_numel} \n")
-
                     self._optimizer_states_and_gradient_swap_in(self.fp32_current_row, timer_names)
 
                     self.fp32_current_row += 1
@@ -2833,10 +2601,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             see_memory_usage(f'post-step Before swapping out optimizer tensors {sub_group_id}', force=False)
             timer_names.add(OPTIMIZER_SWAP_OUT_STATE_TIMER)
             self.timers(OPTIMIZER_SWAP_OUT_STATE_TIMER).start()
-
-            # self.optimizer_swapper.swap_out_optimizer_state(
-            #     parameter=self.fp32_partitioned_groups_flat_new[sub_group_id],
-            #     async_swap=None)
 
             self.optimizer_swapper.swap_out_optimizer_state_from_buffer(
                 parameter=self.fp32_partitioned_groups_flat_new[sub_group_id],
@@ -2944,22 +2708,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         """
             Not supporting closure.
         """
-
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"Length of offloadcount {len(offloadcountinfo.offload_count_dict)} \n")
-        # #print(f"Length of offloadcount {len(offloadcountinfo.offload_count_dict)}")
-        # if not prefetchtable.get_warmup():
-        #     for key, value in offloadcountinfo.offload_count_dict.items():
-        #         offloadcount = offloadcountinfo.offload_count_dict[key]
-        #         with open("/home/sabiha/deepspeed_example/offload_count_cpu_gpu_falcon_7_b_mine.csv", 'a') as file1:
-        #             writer1 = csv.writer(file1)
-        #             writer1.writerow([key, offloadcount.gpu_fetch_count, offloadcount.gpu_offload_count, offloadcountinfo.gpu_read_bytes / (1024 * 1024), offloadcountinfo.gpu_write_bytes / (1024 * 1024)])
-
-
-        # if prefetchtable.get_warmup():
-        #     with open("/home/sabiha/deepspeed_example/deepspeed_mine_change.txt", 'a') as file:
-        #         file.write(f"/deepspeed/runtime/zero/stage3.py#LN2136 inside def step() {prefetchtable.get_prefetch_information_list()} {prefetchtable.get_tensor_id_to_prefetch_list_id_dict()} \n")
-
         self._pre_step()
         self._partition_all_parameters()
 
@@ -3196,7 +2944,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if self.swap_optimizer:
             self.optimizer_swapper.post_backward()
         
-        #self.param_grad_module = self.parameter_offload.get_param_grad()
         
 
     def get_fp32_grad_partitions(self) -> Dict[int, Dict[int, Tensor]]:

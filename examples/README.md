@@ -1,0 +1,1 @@
+deepspeed 10cache_opt_6_7b_cpu_gpu.py

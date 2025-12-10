@@ -36,9 +36,6 @@ def debug_rank0(message: str) -> None:
 
 @instrument_w_nvtx
 def get_all_parameters(sub_module, recurse=False):
-    # if len(sub_module.ds_external_parameters()) > 0:
-    #     with open("/home/sabiha/deepspeed_example/deepspeed_mine_change.txt", 'a') as file:
-    #         file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN35 inside def get_all_parameters external parameters of the module sub_module.ds_external_parameters() {sub_module.ds_external_parameters()} \n")
     return itertools.chain(sub_module.named_parameters(recurse=recurse), sub_module.ds_external_parameters())
 
 
@@ -93,9 +90,6 @@ class PartitionedParameterCoordinator:
         timers=None,
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
-        #prefetchtable=None,
-        #memory_manager=None,
-        #active_tensor_window=None,
     ) -> None:
         # mapping of param -> handle for each param that is currently in flight
         self.__inflight_param_registry = inflight_param_registry
@@ -121,9 +115,6 @@ class PartitionedParameterCoordinator:
         self.hierarchy: int = 0
         self.zero_quantized_weights = zero_quantized_weights
         self.zero_quantized_nontrainable_weights = zero_quantized_nontrainable_weights
-        #self.prefetchtable = prefetchtable
-        #self.memory_manager = memory_manager
-        #self.active_tensor_window = active_tensor_window
         self.timers = timers
 
         # stream that will be used for allgather operations
@@ -229,8 +220,6 @@ class PartitionedParameterCoordinator:
         index1 = prefetchtable.get_tensor_id_to_prefetch_list_id(param_to_remove_id, "fwd")
         param_to_remove_current_location = prefetchtable.get_prefetch_information_list_item(index1).current_location
 
-        # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN173 inside def check_active_tensor_window prefetchtable.current_row {prefetchtable.current_row} param_to_remove_id {param_to_remove_id} param_to_remove_current_location {param_to_remove_current_location} param_to_add_id {param_to_add_id} param_to_add_current_location {param_to_add_current_location} \n")
         if param_to_add_id not in active_tensor_window:
             if param_to_remove_id in active_tensor_window:
                 self.__release_param(params_id_list[param_to_remove_id])
@@ -253,17 +242,10 @@ class PartitionedParameterCoordinator:
             
             else:
                 cpu_buffer_id = CPU_MEMORY_CACHE.get_param_id_to_buffer_id(param.ds_id)
-                #param.ds_tensor.data = GPU_MEMORY_CACHE.buffers[gpu_buffer_id].add(param.ds_tensor)
                 param.ds_tensor.data = GPU_MEMORY_CACHE.add(param.ds_tensor, gpu_buffer_id)
                 CPU_MEMORY_CACHE.release_buffer_id(param.ds_id, cpu_buffer_id, tensor_element)
                 CPU_MEMORY_CACHE.release_gpu_tensors_cpu_cache_id(param.ds_id, tensor_element)
-
-            # gpu_buffer_id = GPU_MEMORY_BUFFER.get_free_buffer_id()
-            # cpu_buffer_id =  CPU_MEMORY_BUFFER.get_param_id_to_buffer_id(param.ds_id)
-            # param.ds_tensor.data = GPU_MEMORY_BUFFER.buffers[gpu_buffer_id].add(param.ds_tensor)
-            # GPU_MEMORY_BUFFER.add_param_id_to_buffer_id(param.ds_id, gpu_buffer_id)
-            # CPU_MEMORY_BUFFER.release_buffer_id(param.ds_id, cpu_buffer_id)
-                
+    
             param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(),
                                                     non_blocking=True).view(param.ds_shape)
             param.ds_status = ZeroParamStatus.AVAILABLE
@@ -284,8 +266,6 @@ class PartitionedParameterCoordinator:
             #                    f"{[p.ds_summary() for p in self.__inflight_param_registry.keys()]}")
         
         if prefetchtable.eval:
-            # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-            #     file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN228 inside def reset_step during evaluation of the model {active_tensor_window} \n")
             prefetch_information_list = prefetchtable.get_prefetch_information_list()
             new_activation_list = []
             length = len(active_tensor_window)
@@ -296,10 +276,6 @@ class PartitionedParameterCoordinator:
                 if tensor_id in active_tensor_window:
                     new_activation_list.append(tensor_id)
                     active_tensor_window.remove(tensor_id)
-                    # index = prefetchtable.get_tensor_id_to_prefetch_list_id(tensor_id, "fwd")
-                    # current_location_prefetch_tensor = prefetchtable.get_prefetch_information_list_item(index).current_location
-                    # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-                    #     file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN228 inside def reset_step prefetch and eviction param are same {tensor_id} current_location_prefetch_tensor {current_location_prefetch_tensor} \n")
                 else:
                     param_id = active_tensor_window.pop()
                     params_id_list[param_id].ds_active_sub_modules.clear()
@@ -307,9 +283,6 @@ class PartitionedParameterCoordinator:
 
                     index = prefetchtable.get_tensor_id_to_prefetch_list_id(tensor_id, "fwd")
                     current_location_prefetch_tensor = prefetchtable.get_prefetch_information_list_item(index).current_location
-
-                    # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-                    #     file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN228 inside def reset_step location of the prefetching param {current_location_prefetch_tensor} param_id prefetch {tensor_id} evict {param_id} \n")
 
                     if current_location_prefetch_tensor == OffloadDeviceEnum.gpu:
                         new_activation_list.append(tensor_id)
@@ -320,10 +293,6 @@ class PartitionedParameterCoordinator:
                         GPU_MEMORY_CACHE.add_param_id_to_buffer_id(param.ds_id, gpu_buffer_id)
                         GPU_MEMORY_CACHE.add_occupied_buffer_id(param.ds_id, tensor_element)
 
-                        # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-                        #     file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN228 inside def reset_step param.ds_tensor.status {param.ds_tensor.status} param_id prefetch {tensor_id} \n")
-
-                        #if current_location_prefetch_tensor == OffloadDeviceEnum.nvme:
                         if param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE:
                             param.nvme_swapper.swap_in([param], async_op=False)
                             new_tensor = GPU_MEMORY_CACHE.add(param.ds_tensor, gpu_buffer_id)
@@ -334,23 +303,9 @@ class PartitionedParameterCoordinator:
                             cpu_buffer_id = CPU_MEMORY_CACHE.get_param_id_to_buffer_id(param.ds_id)
                             param.ds_tensor.data = GPU_MEMORY_CACHE.add(param.ds_tensor, gpu_buffer_id)
                             CPU_MEMORY_CACHE.release_buffer_id(param.ds_id, cpu_buffer_id, tensor_element)
-                            # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-                            #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def reset_step PARAMS_IN_NVME {prefetchtable.PARAMS_IN_NVME} \n")
                             if prefetchtable.PARAMS_IN_NVME:
                                 CPU_MEMORY_CACHE.release_gpu_tensors_cpu_cache_id(param.ds_id, tensor_element)
 
-                        # cpu_buffer_id =  CPU_MEMORY_CACHE.get_param_id_to_buffer_id(param.ds_id)
-                        # #param.ds_tensor.data = GPU_MEMORY_CACHE.buffers[gpu_buffer_id].add(param.ds_tensor)
-                        # param.ds_tensor.data = GPU_MEMORY_CACHE.add(param.ds_tensor, gpu_buffer_id)
-                        # GPU_MEMORY_CACHE.add_param_id_to_buffer_id(param.ds_id, gpu_buffer_id)
-                        # CPU_MEMORY_CACHE.release_buffer_id(param.ds_id, cpu_buffer_id, tensor_element)
-
-                        # gpu_buffer_id = GPU_MEMORY_BUFFER.get_free_buffer_id()
-                        # cpu_buffer_id =  CPU_MEMORY_BUFFER.get_param_id_to_buffer_id(param.ds_id)
-                        # param.ds_tensor.data = GPU_MEMORY_BUFFER.buffers[gpu_buffer_id].add(param.ds_tensor)
-                        # GPU_MEMORY_BUFFER.add_param_id_to_buffer_id(param.ds_id, gpu_buffer_id)
-                        # CPU_MEMORY_BUFFER.release_buffer_id(param.ds_id, cpu_buffer_id)
-                        
                         param.data = param.ds_tensor.data.to(device=get_accelerator().current_device_name(),
                                                             non_blocking=True).view(param.ds_shape)
                         param.ds_status = ZeroParamStatus.AVAILABLE
@@ -361,8 +316,6 @@ class PartitionedParameterCoordinator:
                         prefetchtable.get_prefetch_information_list_item(index).current_location = OffloadDeviceEnum.gpu
 
             prefetchtable.current_row = length
-            # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-            #     file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN228 inside def reset_step during evaluation of the model gpu_threshold {length} \n")
             active_tensor_window.clear()
             active_tensor_window.extend(new_activation_list)
             self.release_param = True
@@ -424,12 +377,7 @@ class PartitionedParameterCoordinator:
         2. kick off fetch for next few parameters we will need later (prefetch)
         3. block on parameters in immediately required sub module
         """
-        # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN2136 inside def fetch_sub_module Forward {forward} self.release_param {self.release_param} prefetchtable.current_row {prefetchtable.current_row} {self.__step_id}: M{current_submodule.id}({type(current_submodule).__name__}) P{[p.ds_id for p in iter_params(current_submodule, recurse=z3_leaf_module(current_submodule))]} " + str({
-        #             "avail": f"{self.__n_available_params:.1e}",
-        #             "queue_sz": f"{len(self.__param_queue or [])}",
-        #             "inflight": [p.ds_id for p in self.__inflight_param_registry],
-        #         }) + " __________ \n")
+        
         if logger.isEnabledFor(logging.DEBUG):
             debug_rank0(
                 f"{self.__step_id}: M{current_submodule.id}({type(current_submodule).__name__}) P{[p.ds_id for p in iter_params(current_submodule, recurse=z3_leaf_module(current_submodule))]} "
@@ -452,9 +400,6 @@ class PartitionedParameterCoordinator:
                 else:
                     self.tensor_size_dict[size] = 1
 
-                # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-                #     file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN173 inside def fetch_sub_module param.ds_id {param.ds_id} \n")
-
         if prefetchtable.get_warmup():
             for param in params_to_fetch:
                 current_time = time.time()
@@ -471,9 +416,6 @@ class PartitionedParameterCoordinator:
         fetch_numel = sum(
             [p.partition_numel() for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE])
 
-        # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN173 inside def fetch_sub_module fetch_numel {fetch_numel} \n")
-
         if fetch_numel > 0:
             event_name = __class__.FORWARD_FETCH_SUBMIT if forward else __class__.BACKWARD_FETCH_SUBMIT
             self._dump_param_ids(event_name, current_submodule.id,
@@ -487,13 +429,9 @@ class PartitionedParameterCoordinator:
             self.__all_gather_params(params_to_fetch, forward)
             self.__profiler.stop_event(event_name, fetch_numel)
 
-        # params_time = {}
-        # params_numel = {}
-        # params_loc = {}
         wait_numel = 0
         wait_event_name = __class__.FORWARD_FETCH_WAIT if forward else __class__.BACKWARD_FETCH_WAIT
         self.__profiler.start_event(wait_event_name)
-        #t0 = time.time()
         # wait for parameters in the immediately needed submodule to become available
         for param in params_to_fetch:
             param.ds_active_sub_modules.add(current_submodule.id)
@@ -507,114 +445,18 @@ class PartitionedParameterCoordinator:
                     if len(self.__ongoing_fetch_events) > self.__max_ongoing_fetch_events:
                         self.__ongoing_fetch_events.popleft().synchronize()
 
-                    # t2 = time.time()
                     self.__inflight_param_registry.pop(param).wait()
-                    # t3 = time.time()
-                    # params_time[param.ds_id] = (t3 - t2) * 1000
-                    # params_numel[param.ds_id] = param.ds_numel
-                    # params_loc[param.ds_id] = param.ds_tensor.final_location
 
                     if not get_accelerator().handles_memory_backpressure():
                         event = get_accelerator().Event()
                         event.record()
                         self.__ongoing_fetch_events.append(event)
 
-            # else:
-            #     params_time[param.ds_id] = 0.0
-            #     params_numel[param.ds_id] = param.ds_numel
-            #     params_loc[param.ds_id] = param.ds_tensor.final_location
-
             assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
         if not get_accelerator().resolves_data_dependency():
             get_accelerator().current_stream().wait_stream(self.__allgather_stream)
-        #t1 = time.time()
         self.__profiler.stop_event(wait_event_name, wait_numel)
-        # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN2136 inside def fetch_sub_module Total time taken in wait for params {t1 - t0} s \n")
         
-        # fp16_element_size = torch.tensor([], dtype=torch.float16).element_size()
-        # if self.is_complete_trace():
-        #     for key in params_time:
-        #         with open("/home/sabiha/deepspeed_example/wait_time_cpu_gpu_falcon_7_b_mine.csv", 'a') as file1:
-        #             writer1 = csv.writer(file1)
-        #             writer1.writerow([key, params_time[key], params_numel[key]*fp16_element_size, params_numel[key], params_loc[key], forward, current_submodule.id, type(current_submodule).__name__])
-
-        # kick off parameter prefetches for upcoming modules
-        # don't prefetch if we dont have a completed model trace
-        # if self.is_complete_trace():
-        #     # go through the parameters we need for the current module and pop them
-        #     # off the fetch queue so that they aren't prefetched later.
-        #     # if params have already been popped off the fetch queue by earlier
-        #     # prefetches we won't look for them here
-        #     discarded_from_prefetch_queue = set()
-        #     params_not_already_fetched = set(
-        #         filter(lambda p: self.__most_recent_step_id_param_fetched_for[p] < self.__step_id, params_to_fetch))
-        #     while self.__param_queue and len(discarded_from_prefetch_queue) < len(params_not_already_fetched):
-        #         param_in_trace = self.__param_queue.popleft()
-        #         self.__most_recent_step_id_param_fetched_for[
-        #             param_in_trace.param] = param_in_trace.step_id_last_used_at
-        #         discarded_from_prefetch_queue.add(param_in_trace.param)
-
-        #     if discarded_from_prefetch_queue != params_not_already_fetched:
-        #         raise RuntimeError(
-        #             f"tracing error at step {self.__step_id}: \n"
-        #             f"module id: {current_submodule.id}, training: {current_submodule.training}\n"
-        #             f"expected the next {len(params_not_already_fetched)} parameters in the "
-        #             f"parameter fetch queue to be {tuple(p.ds_summary(use_debug_name=True) for p in params_not_already_fetched)} \n"
-        #             f"but got \n {tuple(p.ds_summary(use_debug_name=True) for p in discarded_from_prefetch_queue)}.")
-
-        #     def _is_currently_on_nvme(param):
-        #         if param.nvme_swapper is None:
-        #             return False
-
-        #         return param.ds_tensor.final_location == OffloadDeviceEnum.nvme \
-        #             and param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE
-
-        #     # kick off all gather for params in the next few submodules (prefetch)
-        #     if self.__prefetch_bucket_sz > 0:
-        #         max_params_to_prefetch = min(self.__max_n_available_params - self.__n_available_params,
-        #                                      self.__prefetch_bucket_sz)
-        #         params_to_prefetch = set()
-        #         numel_prefetching = 0
-        #         while self.__param_queue and numel_prefetching < max_params_to_prefetch:
-        #             param_in_trace: __class__.__ParamInTrace = self.__param_queue.popleft()
-
-        #             if _is_currently_on_nvme(param_in_trace.param):
-        #                 # nvme prefetch is handled elsewhere. Need to break here to preserve fetch order
-        #                 self.__param_queue.appendleft(param_in_trace)
-        #                 break
-
-        #             do_prefetch = param_in_trace.param.ds_status == ZeroParamStatus.NOT_AVAILABLE
-        #             if param_in_trace.param in params_to_prefetch:
-        #                 # Avoid duplicates
-        #                 do_prefetch = False
-
-        #             self.__most_recent_step_id_param_fetched_for[param_in_trace.param] = \
-        #                 max(self.__most_recent_step_id_param_fetched_for[param_in_trace.param],
-        #                     param_in_trace.step_id_last_used_at)
-
-        #             if do_prefetch:
-        #                 params_to_prefetch.add(param_in_trace.param)
-        #                 numel_prefetching += param_in_trace.param.ds_numel
-
-        #         with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-        #             file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN254 inside def fetch_sub_module param prefetching for sub modules when the is_trace_complete() numel_prefetching {numel_prefetching} \n")
-        #         if numel_prefetching > 0:
-        #             event_name = __class__.FORWARD_PREFETCH_SUBMIT if forward else __class__.BACKWARD_PREFETCH_SUBMIT
-        #             self.__profiler.start_event(event_name)
-        #             if logger.isEnabledFor(logging.DEBUG):
-        #                 for param in params_to_prefetch:
-        #                     debug_rank0(f"-prefetch: {param.ds_summary()}")
-        #             for param in params_to_prefetch:
-        #                 with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-        #                     file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN254 inside def fetch_sub_module param prefetching for sub modules when the is_trace_complete() param.ds_id {param.ds_id} self.__step_id {self.__step_id} \n")
-
-        #             self.__all_gather_params(params_to_prefetch, forward)
-        #             self.__profiler.stop_event(event_name, numel_prefetching)
-
-        #         if self.__prefetch_nvme:
-        #             self.__prefetch_nvme_param_partitions()
-
         self.__step_id += 1
 
     @instrument_w_nvtx
@@ -622,8 +464,6 @@ class PartitionedParameterCoordinator:
     def release_sub_module(self, submodule: Module, forward: bool) -> None:
         """release the parameters of a sub module, assuming they meet conditions to
         be released."""
-        # params_to_release = (self.__params_to_release(submodule, self.__step_id) if self.is_complete_trace() else set(
-        #     p.ds_id for p in iter_params(submodule, recurse=z3_leaf_module(submodule))))
         
         if not self.release_param:
             return
@@ -631,9 +471,6 @@ class PartitionedParameterCoordinator:
         params_to_release = (set(p.ds_id for p in iter_params(submodule, recurse=z3_leaf_module(submodule))))
         
         prefetch_information_list = prefetchtable.get_prefetch_information_list()
-        
-        # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/parameter_offload.py#LN498 inside def release_sub_module prefetchtable.get_warmup() {prefetchtable.get_warmup()} params_to_release {params_to_release} before active_tensor_window {active_tensor_window} \n")
         
         params_to_prefetch = set()
         self.prefetch_from_nvme.clear()
@@ -644,12 +481,9 @@ class PartitionedParameterCoordinator:
         slide =  "fwd" if forward else "bwd"
 
         for param in iter_params(submodule, recurse=z3_leaf_module(submodule)):
-            # param.access_time["end_" + str(len(param.access_time))] = time.time()
+            
             param.ds_active_sub_modules.discard(submodule.id)
 
-            # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-            #     file.write(f"/deepspeed/runtime/zero/parameter_offload.py#LN498 inside def release_sub_module param.ds_id {param.ds_id} active_tensor_window {active_tensor_window} \n")
-            
             if prefetchtable.get_warmup():
                 current_time = time.time()
                 fwd = "fwd" if forward else "bwd"
@@ -676,26 +510,12 @@ class PartitionedParameterCoordinator:
                     prefetch_information_list[row_id].loc = "GPU"
                     current_param = params_id_list[current_tensor_id]
                     if current_param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE:
-                        #return param.ds_tensor.final_location == OffloadDeviceEnum.nvme \ and param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE
-                        #self.prefetch_from_nvme.add(param)
-                        # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-                        #     file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN173 inside def release_sub_module param fetching from nvme current_param.ds_id {current_param.ds_id} \n")
                         self.new_prefetch_from_nvme.add(current_param)
                     else:
-                        # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-                        #     file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN173 inside def release_sub_module param fetching from CPU current_param.ds_id {current_param.ds_id} \n")
                         params_to_prefetch.add(current_param)
                     prefetchtable.current_row += 1
-                    # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-                    #     file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN173 inside def release_sub_module param releasing param.ds_id {param.ds_id} \n")
                     self.__release_param(param)
 
-        # with open("/home/sabiha/deepspeed_example/deepspeed_active_tensor_window.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/parameter_offload.py#LN498 inside def release_sub_module after active_tensor_window {active_tensor_window} prefetchtable \n")
-        # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/parameter_offload.py#LN498 inside def release_sub_module len(params_to_prefetch) {len(params_to_prefetch)} after active_tensor_window {active_tensor_window} \n")
-        # with open("/home/sabiha/deepspeed_example/deepspeed_param_coordinator.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/parameter_offload.py#LN498 inside def release_sub_module GPU_MEMORY_CACHE Occupied Bufferes {GPU_MEMORY_CACHE.occupied_buffer_ids} CPU_MEMORY_CACHE Occupied Bufferes {CPU_MEMORY_CACHE.occupied_buffer_ids} \n")
         if len(self.prefetch_from_nvme) > 0:
             params_to_prefetch.update(self.prefetch_from_nvme)
 
@@ -755,8 +575,6 @@ class PartitionedParameterCoordinator:
         partitioned_params = []
         all_gather_numel = 0  # numel = num of elements
         for param in params:
-            # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-            #     file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN35 inside def __all_gather_params_ param.ds_id {param.ds_id} param.ds_status {param.ds_status} \n")
             if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
                 partitioned_params.append(param)
                 all_gather_numel += param.ds_numel
@@ -788,9 +606,6 @@ class PartitionedParameterCoordinator:
             swap_persisted_params = [
                 p for p in partitioned_params if p.ds_persist and p.ds_tensor.final_location == OffloadDeviceEnum.nvme
             ]
-            # if len(swap_persisted_params) > 0:
-                # with open("/home/sabiha/deepspeed_example/deepspeed_stage_3_log.txt", 'a') as file:
-                #     file.write(f"/deepspeed/runtime/zero/partitioned_param_coordinator.py#LN35 inside def __all_gather_params_ len(swap_persisted_params) {len(swap_persisted_params)} \n")
             if swap_persisted_params:
                 swap_persisted_params[0].nvme_swapper.remove_partition_and_release_buffers(swap_persisted_params)
 

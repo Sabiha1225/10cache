@@ -154,9 +154,6 @@ class OptimizerSwapper(object):
             'timer_names',
         ]
 
-        # with open("/home/sabiha/deepspeed_example/optimizer_swapper.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/optimizer_utils.py#LN173 inside def __init__ self.largest_numel {self.largest_numel} self.swap_element_size {self.swap_element_size} self.min_aio_bytes {self.min_aio_bytes} self.aligned_bytes {self.aligned_bytes} self.numel_alignment {self.numel_alignment} \n")
-
     def swappable_tensor(self, param=None, numel=None):
         assert param is not None or numel is not None, "Either param or numel must be provided"
         if param is not None:

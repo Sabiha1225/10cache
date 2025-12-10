@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 plt.figure(figsize=(4, 3))
 
-file_path1 = '/content/drive/MyDrive/research/wait_time_cpu_gpu_opt_6_7_b_mine.csv'
+file_path1 = '~/10cache/graphs/wait_time_cpu_gpu_opt_6_7_b_10cache.csv'
 df1 = pd.read_csv(file_path1, usecols=[0, 1], skiprows=range(1, 1036), nrows=1034)
 df1 = df1.sort_values(by="Wait_Time_loading(ms)")
 cdf1 = df1["Wait_Time_loading(ms)"].cumsum() / df1["Wait_Time_loading(ms)"].sum()
@@ -11,7 +11,7 @@ cdf1 = df1["Wait_Time_loading(ms)"].cumsum() / df1["Wait_Time_loading(ms)"].sum(
 below_threshold_count1 = (df1["Wait_Time_loading(ms)"] < 0.03).sum()
 percentage1 = (below_threshold_count1 / len(df1)) * 100
 
-file_path2 = '/content/drive/MyDrive/research/wait_time_cpu_gpu_opt_6_7_b_deepspeed_bs1.csv'
+file_path2 = '~/10cache/graphs/wait_time_cpu_gpu_opt_6_7_b_zero_infinity.csv'
 df2 = pd.read_csv(file_path2, usecols=[0, 1], skiprows=range(1, 1036), nrows=1034)
 df2 = df2.sort_values(by="Wait_Time_loading(ms)")
 cdf2 = df2["Wait_Time_loading(ms)"].cumsum() / df2["Wait_Time_loading(ms)"].sum()
@@ -43,6 +43,6 @@ plt.xlim(0.0001, 20)
 plt.ylim(-0.05, 1.05)  
 
 plt.tight_layout()
-plt.savefig('wait_time_cpu_gpu_opt_6_7_b_both.pdf')
+plt.savefig('wait_time_cpu_gpu_opt_6_7_b.pdf')
 
 plt.show()

@@ -42,7 +42,6 @@ model = AutoModelForSequenceClassification.from_pretrained(checkpoint)
 def add_argument():
     parser = argparse.ArgumentParser(description="CIFAR")
 
-    # For train.
     parser.add_argument(
         "-e",
         "--epochs",
@@ -69,7 +68,6 @@ def add_argument():
         help="output logging information at a given interval",
     )
 
-    # For mixed precision training.
     parser.add_argument(
         "--dtype",
         default="fp16",
@@ -274,8 +272,8 @@ def main(args):
     training_time = t1 - t0
     print(f"Training Time taken: {training_time / args.epochs} s")
     print("Finished Training")
-    with open("/home/sabiha/deepspeed_example/training_time.txt", 'a') as file:
-        file.write(f"Training Time smart-cache taken with 6.7 B opt model: {training_time / args.epochs} s \n")
+    with open("~/10cache/examples/training_time.txt", 'a') as file:
+        file.write(f"Training Time 10cache taken with 6.7 B opt model: {training_time / args.epochs} s \n")
 
 
 if __name__ == "__main__":

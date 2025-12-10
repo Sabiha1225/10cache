@@ -102,9 +102,6 @@ class DeepSpeedZeRoOffload(object):
         zero_quantized_weights=False,
         zero_quantized_nontrainable_weights=False,
         param_count_gpu=0,
-        #prefetchtable=None,
-        #memory_manager=None,
-        #active_tensor_window=None,
     ):
 
         see_memory_usage("DeepSpeedZeRoOffload initialize [begin]", force=True)
@@ -121,9 +118,6 @@ class DeepSpeedZeRoOffload(object):
         self.zero_quantized_weights = zero_quantized_weights
         self.zero_quantized_nontrainable_weights = zero_quantized_nontrainable_weights
         self.param_count_gpu_max = param_count_gpu
-        #self.prefetchtable = prefetchtable
-        #self.memory_manager = memory_manager
-        #self.active_tensor_window = active_tensor_window
 
         if offload_param_config is not None and offload_param_config.device != OffloadDeviceEnum.none:
             self.offload_device = offload_param_config.device
@@ -157,7 +151,6 @@ class DeepSpeedZeRoOffload(object):
             module.ds_inflight_param_registry[False] = InflightParamRegistry()
         self.__inflight_param_registry = module.ds_inflight_param_registry
 
-        #self.param_grad_module = {}
         self.forward_hooks = []
         self.backward_hooks = []
         self.setup_zero_stage3_hooks()
@@ -190,9 +183,6 @@ class DeepSpeedZeRoOffload(object):
                 timers=self.timers,
                 zero_quantized_weights=self.zero_quantized_weights,
                 zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights,
-                #prefetchtable=self.prefetchtable,
-                #memory_manager=self.memory_manager,
-                #active_tensor_window = self.active_tensor_window,
             )
 
         return self.param_coordinators[training]
@@ -211,9 +201,6 @@ class DeepSpeedZeRoOffload(object):
                 if mpu:
                     group = mpu.get_data_parallel_group()
                 
-                # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-                #     file.write(f"/deepspeed/runtime/zero/parameter_offload.py#LN479 inside def _convert_to_zero_parameters gpu_available_memory before model_to {memory_manager.get_gpu_available_memory_nvidia_smi()} cpu_available_memory before {memory_manager.get_cpu_available_memory()}  \n")
-
                 Init(module=module,
                      data_parallel_group=group,
                      dtype=self.dtype,
@@ -225,11 +212,7 @@ class DeepSpeedZeRoOffload(object):
                      zero_quantized_weights=self.zero_quantized_weights,
                      zero_quantized_nontrainable_weights=self.zero_quantized_nontrainable_weights,
                      param_count_gpu_max=self.param_count_gpu_max,
-                     #prefetchtable=self.prefetchtable,
-                     #memory_manager=self.memory_manager,
                      )
-                # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-                #     file.write(f"/deepspeed/runtime/zero/parameter_offload.py#LN479 inside def _convert_to_zero_parameters gpu_available_memory after model_to {memory_manager.get_gpu_available_memory_nvidia_smi()} cpu_available_memory after {memory_manager.get_cpu_available_memory()}  \n")
 
     def destroy(self):
         self._remove_module_hooks()
@@ -270,28 +253,14 @@ class DeepSpeedZeRoOffload(object):
         total_persistent_parameters = 0
         params_count = 0
         for name, param in self.module.named_parameters(recurse=True):
-            #if param.ds_numel + total_persistent_parameters > model_threshold and not prefetchtable.get_warmup():
             if param.ds_numel + total_persistent_parameters > model_threshold:
                 continue
 
-            #if param.ds_numel <= param_threshold and not prefetchtable.get_warmup():
             if param.ds_numel <= param_threshold:
                 params_count += 1
                 param.ds_persist = True
                 persistent_params.append(param)
                 total_persistent_parameters += param.ds_numel
-
-            # if prefetchtable.get_warmup():
-            #     params_count += 1
-            #     param.ds_persist = True
-            #     persistent_params.append(param)
-            #     total_persistent_parameters += param.ds_numel
-
-            # if params_count < self.param_count_gpu_max:
-            #     params_count += 1
-            #     param.ds_persist = True
-            #     persistent_params.append(param)
-            #     total_persistent_parameters += param.ds_numel
 
 
         print_rank_0(
@@ -303,8 +272,6 @@ class DeepSpeedZeRoOffload(object):
     def _register_hooks_recursively(self, module, count=[0]):
         my_count = count[0]
         module.id = my_count
-
-        #print(f"{module.__class__} : {module.id}")
 
         if z3_leaf_module(module):
             for param in module.parameters():
@@ -329,7 +296,6 @@ class DeepSpeedZeRoOffload(object):
                 if torch.is_tensor(output):
                     output = [output]
                 else:
-                    #print(f'got UNKNOWN type {type(output)}')
                     outputs = []
                     output = output if isinstance(output, dict) else vars(output)
                     for name, val in output.items():
@@ -374,11 +340,9 @@ class DeepSpeedZeRoOffload(object):
                     # some models (e.g. Albert) may run multiple forwards on the same layer in a loop
                     # before doing backwards, so each backward will need a pre-fetch - using reference
                     # counting to support this scenario
-                    #print(f"COUNTER before: {sub_module.applied_pre_backward_ref_cnt}")
                     if sub_module.applied_pre_backward_ref_cnt > 0:
                         self.pre_sub_module_backward_function(sub_module)
                         sub_module.applied_pre_backward_ref_cnt -= 1
-                    #print(f"COUNTER after: {sub_module.applied_pre_backward_ref_cnt}")
 
                 class PreBackwardFunctionForModule(torch.autograd.Function):
 
@@ -409,12 +373,9 @@ class DeepSpeedZeRoOffload(object):
         def _alternate_post_backward_module_hook(module, inputs):
             module.ds_grads_remaining = 0
 
-            #print(f"Before Forward {module.__class__.__name__}")
-
             def _run_after_backward_hook(*unused):
                 module.ds_grads_remaining = module.ds_grads_remaining - 1
                 if module.ds_grads_remaining == 0:
-                    #print(f"After backward {module.__class__.__name__}")
                     self.post_sub_module_backward_function(module)
 
             def _run_before_forward_function(input):
@@ -520,11 +481,8 @@ class DeepSpeedZeRoOffload(object):
             force=False)
 
         self.get_param_coordinator(training=True).release_sub_module(sub_module, forward=False)
-        #self.param_grad_module[sub_module.id] = self.get_param_coordinator(training=True).get_grad(sub_module)
 
         see_memory_usage(
             f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} after release",
             force=False)
         
-    # def get_param_grad(self):
-    #     return self.param_grad_module

@@ -1,3 +1,5 @@
+
+
 import argparse
 
 import deepspeed
@@ -18,15 +20,15 @@ from transformers import AutoModelForSequenceClassification, AdamW, get_schedule
 import csv
 import pandas as pd
 
-raw_datasets = load_dataset("glue", "cola")
-checkpoint = "bigscience/bloom-7b1"
+raw_datasets = load_dataset("glue", "mrpc")
+checkpoint = "facebook/opt-13b"
 
 tokenizer = AutoTokenizer.from_pretrained(checkpoint)
 def tokenize_function(example):
-    return tokenizer(example["sentence"], truncation=True)
+    return tokenizer(example["sentence1"], example["sentence2"], truncation=True)
 tokenized_datasets = raw_datasets.map(tokenize_function, batched=True)
 data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-tokenized_datasets = tokenized_datasets.remove_columns(["sentence", "idx"])
+tokenized_datasets = tokenized_datasets.remove_columns(["sentence1", "sentence2", "idx"])
 tokenized_datasets = tokenized_datasets.rename_column("label", "labels")
 tokenized_datasets.set_format("torch")
 train_dataloader = DataLoader(
@@ -41,7 +43,7 @@ def add_argument():
     parser.add_argument(
         "-e",
         "--epochs",
-        default=3,
+        default=1,
         type=int,
         help="number of total epochs (default: 30)",
     )
@@ -90,7 +92,6 @@ def add_argument():
         action="store_true",
         help="use deepspeed mixture of experts (moe)",
     )
-    
     parser.add_argument(
         "--moe-param-group",
         default=False,
@@ -154,18 +155,20 @@ def get_ds_config(args):
             "overlap_comm": True,
             "contiguous_gradients": True,
             "offload_optimizer": {
-                "device": "cpu",
+                "device": "nvme",
+                "nvme_path": "/mnt/nvme/",
                 "pin_memory": True,
                 "ratio": 1.0,
                 "buffer_count": 4,
                 "fast_init": False
             },
             "offload_param": {
-                "device": "cpu",
+                "device": "nvme",
+                "nvme_path": "/mnt/nvme/",
                 "pin_memory": True,
-                "buffer_count": 5,
+                "buffer_count": 30,
                 "buffer_size": 3e8,
-                "max_in_cpu": 10000
+                "max_in_cpu": 1e9
             }
         },
         "comms_logger": {
@@ -187,10 +190,14 @@ def main(args):
 
     if torch.distributed.get_rank() == 0:
         torch.distributed.barrier()
-
     net = model
 
+    # Get list of parameters that require gradients.
     parameters = filter(lambda p: p.requires_grad, net.parameters())
+
+    # If using MoE, create separate param groups for each expert.
+    if args.moe_param_group:
+        parameters = create_moe_param_groups(net)
 
     ds_config = get_ds_config(args)
     model_engine, optimizer, __, __ = deepspeed.initialize(
@@ -228,19 +235,21 @@ def main(args):
             attention_mask = data["attention_mask"]
             labels = data["labels"]
             outputs = model_engine(input_ids=input_ids, attention_mask=attention_mask, labels=None)
+
             loss = criterion(outputs.logits, labels)
 
             model_engine.backward(loss)
             model_engine.step()
-            if i == 0 and epoch == 0:
-                get_accelerator().empty_cache()
+            if i >= 30:
+               break
+            
     torch.cuda.synchronize()
     t1 = time.time()
     training_time = t1 - t0
-    print(f"Training Time taken: {training_time / args.epochs} s")
+    print(f"Training Time taken for 30 iterations: {training_time} s")
     print("Finished Training")
-    with open("/home/sabiha/deepspeed_example/training_time.txt", 'a') as file:
-        file.write(f"Training Time taken DeepSpeed with bloom 7B opt model: {training_time / args.epochs} s \n")
+    with open("~/10cache/examples/training_time.txt", 'a') as file:
+        file.write(f"Training Time taken zero-infinity with 13 B opt model: {training_time} s \n")
 
 
 if __name__ == "__main__":

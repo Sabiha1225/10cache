@@ -222,9 +222,6 @@ class AsyncPartitionedParameterSwapper(object):
         assert self.pending_reads == self.aio_read_handle.wait()
         #value = self.aio_read_handle.wait()
 
-        # with open("/home/sabiha/deepspeed_example/deepspeed_fp16_reads_writes.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def synchronize_reads reading aio_read_handle value {value} self.pending_reads {self.pending_reads}  \n")
-
         #assert self.pending_reads == value
         self.pending_reads = 0
 
@@ -448,8 +445,6 @@ class AsyncPartitionedParameterSwapper(object):
 
     def reserve_partitioned_swap_space(self, partition_num_elems):
         aligned_numel = sum([self._io_aligned_numel(numel) for numel in partition_num_elems])
-        # with open("/home/sabiha/deepspeed_example/deepspeed_gpu_cpu_tensor_count.txt", 'a') as file:
-        #     file.write(f"/deepspeed/runtime/zero/stage3.py#LN479 inside def reserve_partitioned_swap_space aligned_numel {aligned_numel}  \n")
         self.partitioned_swap_buffer = get_accelerator().pin_memory(torch.zeros(aligned_numel,
                                                                                 device='cpu',
                                                                                 dtype=self.dtype),

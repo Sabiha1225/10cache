@@ -1,4 +1,3 @@
-````markdown
 # 10Cache: Heterogeneous Resource-Aware Tensor Caching and Migration for LLM Training
 
 10Cache is a heterogeneous resource-aware tensor caching and migration system designed to improve the efficiency of large language model (LLM) training. It intelligently manages tensors across heterogeneous hardware resources to reduce data movement overhead and improve resource utilization.
@@ -31,4 +30,3 @@ If you use 10Cache in your research, please consider citing our paper:
   year      = {2025}
 }
 ```
-````
